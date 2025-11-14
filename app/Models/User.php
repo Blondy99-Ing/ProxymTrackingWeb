@@ -55,10 +55,11 @@ class User extends Authenticatable
 
 
 
-    public function voitures()
-    {
-        return $this->belongsToMany(Voiture::class, 'association_user_voitures', 'user_id', 'voiture_id');
-    }
+   public function voitures()
+{
+    return $this->belongsToMany(Voiture::class, 'association_user_voitures', 'user_id', 'voiture_id');
+}
+
 
 
 }

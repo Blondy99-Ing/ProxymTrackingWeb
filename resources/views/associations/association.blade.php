@@ -1,150 +1,157 @@
 @extends('layouts.app')
 
-@section('title', 'Associations des véhicules aux utilisateurs')
+@section('title', 'Associations Utilisateurs - Véhicules')
 
 @section('content')
-<div class=" m-5">
+<div class="p-4 md:p-8 space-y-8">
 
-    <!-- Messages de succès ou d'erreur -->
+    {{-- Messages de succès / erreur --}}
     @if(session('success'))
-    <div class="alert alert-success">{{ session('success') }}</div>
+    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded ui-card">
+        {{ session('success') }}
+    </div>
     @endif
-
     @if(session('error'))
-    <div class="alert alert-danger">{{ session('error') }}</div>
+    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded ui-card">
+        {{ session('error') }}
+    </div>
     @endif
 
-    <!-- Formulaire pour les associations -->
-    <div class="row">
-        <!-- Liste des Utilisateurs -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">Liste des Utilisateurs</div>
-                <div class="card-body">
-                    <input type="text" id="userSearch" class="form-control mb-3"
-                        placeholder="Rechercher un utilisateur">
-                    <div id="userList" style="height: 200px; overflow-y: auto;">
-                        @foreach($users as $user)
-                        <div class="form-check">
-                            <input type="radio" name="user_unique_id" value="{{ $user->user_unique_id }}"
-                                id="user_{{ $user->id }}" class="form-check-input">
-                            <label for="user_{{ $user->id }}" class="form-check-label">
-                                {{ $user->nom }} {{ $user->prenom }} (ID: {{ $user->user_unique_id }})
-                            </label>
-                        </div>
-                        @endforeach
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Liste des Véhicules -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">Liste des Véhicules</div>
-                <div class="card-body">
-                    <input type="text" id="voitureSearch" class="form-control mb-3"
-                        placeholder="Rechercher un véhicule">
-                    <div id="voitureList" style="height: 200px; overflow-y: auto;">
-                        @foreach($voitures as $voiture)
-                        <div class="form-check">
-                            <input type="checkbox" name="voiture_unique_id[]" value="{{ $voiture->voiture_unique_id }}"
-                                id="voiture_{{ $voiture->id }}" class="form-check-input">
-                            <label for="voiture_{{ $voiture->id }}" class="form-check-label">
-                                Immatriculation: {{ $voiture->immatriculation }} - Marque: {{ $voiture->marque }}
-                                (ID: {{ $voiture->voiture_unique_id }})
-                            </label>
-                        </div>
-                        @endforeach
-                    </div>
-                </div>
-            </div>
-        </div>
+    {{-- Bouton pour ouvrir la modale d'association --}}
+    <div>
+        <button type="button" class="btn-primary" data-modal-target="associationModal">
+            Ajouter une association
+        </button>
     </div>
 
-    <!-- Bouton Associer -->
-    <div class="row mt-3">
-        <div class="col-md-12 text-center">
-            <form action="{{ route('association.store') }}" method="POST">
+    {{-- Modal pour sélectionner utilisateur et véhicules --}}
+    <div id="associationModal"
+        class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+        <div class="bg-card rounded-lg w-full max-w-4xl p-6 relative ui-card">
+            <h2 class="text-xl font-bold font-orbitron mb-4">Associer un utilisateur à un ou plusieurs véhicules</h2>
+
+            <button type="button" class="absolute top-3 right-3 text-secondary hover:text-red-500"
+                data-modal-close="associationModal">
+                <i class="fas fa-times"></i>
+            </button>
+
+            <form action="{{ route('association.store') }}" method="POST" class="space-y-4" id="associationForm">
                 @csrf
-                <input type="hidden" id="selectedUser" name="user_unique_id">
-                <input type="hidden" id="selectedVoitures" name="voiture_unique_id">
-                <button type="submit" class="btn btn-primary">Associer</button>
+                <div class="flex flex-col md:flex-row gap-4">
+                    {{-- Liste Utilisateurs --}}
+                    <div class="flex-1 bg-white dark:bg-gray-800 dark:text-gray-100 p-3 rounded shadow">
+                        <label class="block font-medium text-secondary dark:text-gray-300 mb-2">Utilisateur</label>
+                        <input type="text" placeholder="Rechercher utilisateur..." id="searchUser"
+                            class="w-full mb-3 px-3 py-2 border rounded focus:outline-none focus:ring focus:border-blue-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+
+                        <div id="userList" class="space-y-2 max-h-64 overflow-y-auto">
+                            @foreach($users as $user)
+                            <label
+                                class="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                <input type="radio" name="user_unique_id" value="{{ $user->user_unique_id }}"
+                                    class="form-radio" required>
+                                <span>{{ $user->nom }} {{ $user->prenom }} (ID: {{ $user->user_unique_id }})</span>
+                            </label>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    {{-- Liste Véhicules --}}
+                    <div class="flex-1 bg-white dark:bg-gray-800 p-3 rounded shadow">
+                        <label class="block font-medium text-secondary mb-2">Véhicules</label>
+                        <input type="text" placeholder="Rechercher véhicule..." id="searchVehicle"
+                            class="w-full mb-3 px-3 py-2 border rounded focus:outline-none focus:ring focus:border-blue-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                        <div id="vehicleList" class="space-y-2 max-h-64 overflow-y-auto">
+                            @foreach($voitures as $voiture)
+                            <label
+                                class="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                <input type="checkbox" name="voiture_unique_id[]"
+                                    value="{{ $voiture->voiture_unique_id }}" class="form-checkbox">
+                                <span>{{ $voiture->immatriculation }} - {{ $voiture->marque }}</span>
+                            </label>
+                            @endforeach
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end mt-4 space-x-2">
+                    <button type="button" class="btn-secondary" data-modal-close="associationModal">Annuler</button>
+                    <button type="submit" class="btn-primary">Associer</button>
+                </div>
             </form>
+
         </div>
     </div>
 
-    <!-- Tableau des Associations -->
-    <div class="row mt-4">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header">Liste des Associations Utilisateur-Véhicule</div>
-                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
-                    <table class="table table-bordered">
-                        <thead>
-                            <tr>
-                                <th>ID Utilisateur</th>
-                                <th>Nom et Prénom Utilisateur</th>
-                                <th>ID Véhicule</th>
-                                <th>Immatriculation</th>
-                                <th>Marque</th>
-                                <th>Date d'Association</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($associations as $voiture)
-                            <tr>
-                                <td>{{ $voiture->utilisateur->first()->user_unique_id ?? 'Non défini' }}</td>
-                                <td>{{ $voiture->utilisateur->first()->nom ?? 'N/A' }}
-                                    {{ $voiture->utilisateur->first()->prenom ?? 'N/A' }}</td>
-                                <td>{{ $voiture->voiture_unique_id }}</td>
-                                <td>{{ $voiture->immatriculation }}</td>
-                                <td>{{ $voiture->marque }}</td>
-                                <td>{{ $voiture->created_at }}</td>
-                            </tr>
-                            @endforeach
-                        </tbody>
-
-                    </table>
-                </div>
-            </div>
+    {{-- Tableau des associations --}}
+    <div class="ui-card overflow-x-auto shadow-md">
+        <h2 class="text-xl font-bold font-orbitron mb-4">Liste des Associations Utilisateur - Véhicule</h2>
+        <div class="ui-table-container">
+            <table class="ui-table w-full">
+                <thead>
+                    <tr>
+                        <th>ID Utilisateur</th>
+                        <th>Nom et Prénom</th>
+                        <th>ID Véhicule</th>
+                        <th>Immatriculation</th>
+                        <th>Marque</th>
+                        <th>Date d'Association</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($associations as $assoc)
+                    <tr>
+                        <td>{{ $assoc->utilisateur->first()->user_unique_id ?? 'Non défini' }}</td>
+                        <td>{{ $assoc->utilisateur->first()->nom ?? 'N/A' }}
+                            {{ $assoc->utilisateur->first()->prenom ?? 'N/A' }}</td>
+                        <td>{{ $assoc->voiture_unique_id }}</td>
+                        <td>{{ $assoc->immatriculation }}</td>
+                        <td>{{ $assoc->marque }}</td>
+                        <td>{{ optional($assoc->created_at)->format('d/m/Y H:i') ?? 'Non défini' }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
         </div>
     </div>
 
 </div>
 
+{{-- Scripts pour la modale et la recherche --}}
 <script>
-// Recherche dynamique pour les utilisateurs
-document.getElementById('userSearch').addEventListener('input', function() {
-    let query = this.value.toLowerCase();
-    document.querySelectorAll('#userList .form-check').forEach(function(item) {
-        item.style.display = item.innerText.toLowerCase().includes(query) ? 'block' : 'none';
-    });
-});
-
-// Recherche dynamique pour les voitures
-document.getElementById('voitureSearch').addEventListener('input', function() {
-    let query = this.value.toLowerCase();
-    document.querySelectorAll('#voitureList .form-check').forEach(function(item) {
-        item.style.display = item.innerText.toLowerCase().includes(query) ? 'block' : 'none';
-    });
-});
-
-// Gestion des sélections
-document.querySelectorAll('input[name="user_unique_id"]').forEach(function(radio) {
-    radio.addEventListener('change', function() {
-        document.getElementById('selectedUser').value = this.value;
-    });
-});
-
-document.querySelectorAll('input[name="voiture_unique_id[]"]').forEach(function(checkbox) {
-    checkbox.addEventListener('change', function() {
-        let selected = [];
-        document.querySelectorAll('input[name="voiture_unique_id[]"]:checked').forEach(function(
-            checkedBox) {
-            selected.push(checkedBox.value);
+function filterList(inputId, listId) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+    input.addEventListener('input', () => {
+        const filter = input.value.toLowerCase();
+        list.querySelectorAll('label').forEach(label => {
+            const text = label.textContent.toLowerCase();
+            label.style.display = text.includes(filter) ? '' : 'none';
         });
-        document.getElementById('selectedVoitures').value = selected.join(',');
+    });
+}
+
+filterList('searchUser', 'userList');
+filterList('searchVehicle', 'vehicleList');
+
+// Modale
+document.querySelectorAll('[data-modal-target]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const modalId = btn.getAttribute('data-modal-target');
+        document.getElementById(modalId).classList.remove('hidden');
+    });
+});
+
+document.querySelectorAll('[data-modal-close]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const modalId = btn.getAttribute('data-modal-close');
+        document.getElementById(modalId).classList.add('hidden');
+    });
+});
+
+document.querySelectorAll('.fixed.inset-0').forEach(modal => {
+    modal.addEventListener('click', e => {
+        if (e.target === modal) modal.classList.add('hidden');
     });
 });
 </script>

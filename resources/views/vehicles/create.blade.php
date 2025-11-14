@@ -1,47 +1,45 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add New Vehicle</title>
+    <title>Ajouter un Nouveau Véhicule | ProxymTracking</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom Tailwind Configuration (for Inter font and Orange colors) -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-orange': '#FF7800',
+                        'primary-light': '#FFE2CC',
+                        'primary-dark': '#E66A00',
+                        'success-green': '#10b981',
+                        'success-light-green': '#d1fae5',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-    <!-- Google Fonts -->
+    <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
 
+    <!-- Custom styles for non-Tailwind elements like Leaflet map and pseudo-elements -->
     <style>
-        :root {
-            --primary: #FF7800;
-            --primary-light: #FFE2CC;
-            --primary-dark: #E66A00;
-            --primary-gradient: linear-gradient(135deg, #FF7800 0%, #FF9A40 100%);
-            --success: #10b981;
-            --success-light: #d1fae5;
-            --gray-100: #f8f9fa;
-            --gray-200: #e9ecef;
-            --gray-300: #dee2e6;
-            --gray-400: #ced4da;
-            --gray-600: #6c757d;
-            --gray-800: #343a40;
-            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            --shadow-orange: 0 10px 25px -5px rgba(255, 120, 0, 0.25);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        /* Base styles */
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--gray-100);
-            color: var(--gray-800);
+            background-color: #f8f9fa; /* gray-100 */
+            color: #343a40; /* gray-800 */
             line-height: 1.6;
             min-height: 100vh;
             background-image:
@@ -49,625 +47,324 @@
                 radial-gradient(circle at 90% 80%, rgba(255, 120, 0, 0.03) 0%, transparent 20%);
         }
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        header {
-            padding: 1.5rem 0;
-            margin-bottom: 1.5rem;
-        }
-
-        h1 {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--gray-800);
-            text-align: center;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-        }
-
-        h1 i {
-            color: var(--primary);
-        }
-
-        .alert {
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-        }
-
-        .alert-success {
-            background-color: var(--success-light);
-            color: var(--success);
-            border: 1px solid #a7f3d0;
-        }
-
-        .alert-success i {
-            margin-right: 0.5rem;
-        }
-
-        .two-column-layout {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 2rem;
-        }
-
-        .card {
-            background-color: white;
-            border-radius: 1rem;
-            box-shadow: var(--shadow-md);
-            padding: 2rem;
-            height: 100%;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .card::before {
+        /* Gradient top bar for Card and Map Container (mimicking original design) */
+        .card::before, .map-container::before {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 5px;
-            background: var(--primary-gradient);
+            background: linear-gradient(135deg, #FF7800 0%, #FF9A40 100%);
+            border-top-left-radius: 0.75rem;
+            border-top-right-radius: 0.75rem;
+            z-index: 10;
         }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .form-group.full-width {
-            grid-column: 1 / -1;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: var(--gray-800);
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            font-size: 1rem;
-            border: 2px solid var(--gray-200);
-            border-radius: 0.5rem;
-            transition: all 0.3s;
-            background-color: white;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(255, 120, 0, 0.15);
-            background-color: rgba(255, 120, 0, 0.02);
-        }
-
-        .form-label {
-            position: relative;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: var(--gray-800);
-        }
-
-        .form-label i {
-            color: var(--primary);
-        }
-
-        .form-file {
-            display: block;
-            position: relative;
-        }
-
-        .file-input {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            font-size: 1rem;
-            background-color: white;
-            border: 1px solid var(--gray-200);
-            border-radius: 0.5rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .file-input:focus,
-        .file-input:hover {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            font-weight: 500;
-            padding: 0.75rem 1.5rem;
-            border-radius: 0.5rem;
-            font-size: 1rem;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.2s;
-            border: none;
-        }
-
-        .btn-primary {
-            background: var(--primary-gradient);
-            color: white;
-            box-shadow: var(--shadow-orange);
-            position: relative;
-            overflow: hidden;
-            z-index: 1;
-        }
-
-        .btn-primary:before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--primary-dark);
-            z-index: -1;
-            transition: opacity 0.3s ease;
-            opacity: 0;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-orange);
-        }
-
-        .btn-primary:hover:before {
-            opacity: 1;
-        }
-
-        .btn-primary:active {
-            transform: translateY(0);
-        }
-
-        .form-footer {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 1.5rem;
-            grid-column: 1 / -1;
-        }
-
-        .selected-region {
-            display: flex;
-            align-items: center;
-            background-color: var(--primary-light);
-            color: var(--primary);
-            padding: 0.75rem 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            font-weight: 500;
-            border-left: 4px solid var(--primary);
-            animation: fadeIn 0.5s ease;
-        }
-
-        .selected-region i {
-            margin-right: 0.5rem;
-            animation: pulse 1.5s infinite;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .map-container {
-            border-radius: 1rem;
-            overflow: hidden;
-            box-shadow: var(--shadow-md);
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            position: relative;
-        }
-
         .map-container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 5px;
-            background: var(--primary-gradient);
-            z-index: 1;
+            background: linear-gradient(90deg, #FF7800 0%, #FF9A40 100%);
         }
 
-        .map-header {
-            background-color: white;
-            padding: 1.25rem;
-            border-bottom: 1px solid var(--gray-200);
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            position: relative;
-        }
-
-        .map-header i {
-            color: var(--primary);
-            font-size: 1.2rem;
-        }
-
-        .map-header::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, var(--primary-light), transparent);
-        }
-
+        /* Map specific styles */
         #map {
             flex: 1;
             width: 100%;
-            background: var(--gray-100);
+            background: #f8f9fa; /* gray-100 */
             min-height: 500px;
         }
 
+        /* Leaflet Tooltip for selected region (custom styling) */
         .region-label {
             background-color: white !important;
             border: none !important;
-            box-shadow: var(--shadow-orange) !important;
+            box-shadow: 0 10px 25px -5px rgba(255, 120, 0, 0.25) !important;
             padding: 0.5rem 1rem !important;
             border-radius: 0.5rem !important;
             font-weight: 600 !important;
-            color: var(--primary) !important;
+            color: #FF7800 !important;
             transform: translateY(-5px) !important;
+            opacity: 0.95;
+            transition: all 0.3s;
         }
 
-        /* Animation for hover effects */
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
-        }
-
-        .card:hover {
-            box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.1), 0 10px 15px -5px rgba(0, 0, 0, 0.05);
-            transform: translateY(-2px);
-            transition: all 0.3s ease;
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 1024px) {
-            .two-column-layout {
-                grid-template-columns: 1fr;
-            }
-
-            .map-container {
-                order: -1;
-                margin-bottom: 2rem;
-            }
-
-            #map {
-                min-height: 400px;
-            }
-        }
-
+        /* Header Layout Adjustments */
         @media (max-width: 768px) {
-            .container {
-                padding: 1rem;
-            }
-
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .card {
-                padding: 1.5rem;
-            }
-        }
-    </style>
-</head>
-
-<body>
-<div class="container">
-    <header>
-        <h1>
-            <div class="logo-container">
-                <i class="fas fa-satellite-dish"></i> <span>Proxym</span><span class="highlight">Tracking</span>
-            </div>
-            <div class="title-divider"></div>
-            <div class="page-title"><i class="fas fa-car-side"></i> Add New Vehicle</div>
-        </h1>
-    </header>
-
-    <style>
-        .logo-container {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-weight: 800;
-            font-size: 1.6rem;
-            color: var(--gray-800);
-        }
-
-        .logo-container i {
-            color: var(--primary);
-            font-size: 1.8rem;
-        }
-
-        .highlight {
-            color: var(--primary);
-        }
-
-        .title-divider {
-            height: 2rem;
-            width: 2px;
-            background-color: var(--gray-300);
-            margin: 0 1rem;
-        }
-
-        .page-title {
-            font-size: 1.4rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .page-title i {
-            color: var(--primary);
-        }
-
-        h1 {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-        }
-
-        @media (max-width: 768px) {
-            h1 {
+            .header-content {
                 flex-direction: column;
                 gap: 0.75rem;
             }
-
             .title-divider {
                 display: none;
             }
         }
     </style>
+</head>
 
-    @if(session('success'))
-        <div class="alert alert-success">
-            <i class="fas fa-check-circle"></i>
-            {{ session('success') }}
-        </div>
-    @endif
-
-    <div class="two-column-layout">
-        <!-- Vehicle Form -->
-        <div class="card">
-            <div id="selected-region-display" class="selected-region" style="display: none;">
-                <i class="fas fa-map-marker-alt"></i>
-                <span id="region-display-text">No region selected</span>
+<body class="font-sans">
+    <div class="max-w-7xl mx-auto p-4 md:p-8">
+        <!-- Header -->
+        <header class="py-6 mb-6">
+            <div class="flex items-center justify-center flex-wrap gap-4 header-content">
+                <!-- Logo -->
+                <div class="flex items-center gap-1.5 font-extrabold text-2xl text-gray-800 logo-container">
+                    <i class="fas fa-satellite-dish text-primary-orange text-3xl"></i> <span>Proxym</span><span class="text-primary-orange">Tracking</span>
+                </div>
+                <!-- Divider -->
+                <div class="h-8 w-px bg-gray-300 mx-4 title-divider"></div>
+                <!-- Page Title -->
+                <div class="flex items-center gap-1.5 text-xl font-semibold page-title">
+                    <i class="fas fa-car-side text-primary-orange"></i> Ajouter un Nouveau Véhicule
+                </div>
             </div>
+        </header>
 
-            <form method="POST" action="{{ route('vehicles.save') }}" enctype="multipart/form-data">
-                @csrf
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label class="form-label" for="immatriculation">
-                            <i class="fas fa-id-card"></i> Immatriculation
-                        </label>
-                        <input type="text" id="immatriculation" name="immatriculation" class="form-control" required placeholder="Enter vehicle number">
-                    </div>
+        <!-- Placeholder for Success Message (Original Blade logic) -->
+        <!--
+        <div class="bg-success-light-green text-success-green border border-green-300 p-4 rounded-lg flex items-center mb-6">
+             <i class="fas fa-check-circle mr-2"></i> Le véhicule a été ajouté avec succès !
+        </div>
+        -->
 
-                    <div class="form-group">
-                        <label class="form-label" for="mac_id_gps">
-                            <i class="fas fa-satellite-dish"></i> MAC ID GPS
-                        </label>
-                        <input type="text" id="mac_id_gps" name="mac_id_gps" class="form-control" required placeholder="Enter GPS MAC ID">
-                    </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Form Card -->
+            <div class="card bg-white rounded-xl shadow-xl p-6 md:p-8 h-full relative transition duration-300 hover:shadow-2xl">
+                
+                <!-- Selected Region Display -->
+                <div id="selected-region-display" class="hidden items-center bg-primary-light text-primary-orange p-3 rounded-lg mb-6 font-medium border-l-4 border-primary-orange animate-in fade-in slide-in-from-top-1">
+                    <i class="fas fa-map-marker-alt mr-2 animate-pulse"></i>
+                    <span id="region-display-text">Aucune région sélectionnée</span>
+                </div>
 
-                    <div class="form-group">
-                        <label class="form-label" for="marque">
-                            <i class="fas fa-copyright"></i> Marque
-                        </label>
-                        <input type="text" id="marque" name="marque" class="form-control" required placeholder="Toyota, Honda, etc.">
-                    </div>
+                <form method="POST" action="#" enctype="multipart/form-data">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
 
-                    <div class="form-group">
-                        <label class="form-label" for="model">
-                            <i class="fas fa-car"></i> Model
-                        </label>
-                        <input type="text" id="model" name="model" class="form-control" required placeholder="Corolla, Civic, etc.">
-                    </div>
+                        <!-- Immatriculation -->
+                        <div class="form-group">
+                            <label class="flex items-center gap-2 mb-2 font-semibold text-gray-800" for="immatriculation">
+                                <i class="fas fa-id-card text-primary-orange"></i> Immatriculation
+                            </label>
+                            <input type="text" id="immatriculation" name="immatriculation" class="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-primary-orange focus:ring-4 focus:ring-primary-orange/30 transition duration-300" required placeholder="Ex: CE-123-AA">
+                        </div>
 
-                    <div class="form-group">
-                        <label class="form-label" for="couleur">
-                            <i class="fas fa-palette"></i> Couleur
-                        </label>
-                        <input type="text" id="couleur" name="couleur" class="form-control" required placeholder="Blue, Black, etc.">
-                    </div>
+                        <!-- MAC ID GPS -->
+                        <div class="form-group">
+                            <label class="flex items-center gap-2 mb-2 font-semibold text-gray-800" for="mac_id_gps">
+                                <i class="fas fa-satellite-dish text-primary-orange"></i> MAC ID GPS
+                            </label>
+                            <input type="text" id="mac_id_gps" name="mac_id_gps" class="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-primary-orange focus:ring-4 focus:ring-primary-orange/30 transition duration-300" required placeholder="Ex: AA:BB:CC:DD:EE:FF">
+                        </div>
 
-                    <div class="form-group">
-                        <label class="form-label" for="photo">
-                            <i class="fas fa-camera"></i> Photo
-                        </label>
-                        <div class="form-file">
-                            <input type="file" id="photo" name="photo" class="file-input" accept="image/*">
+                        <!-- Marque -->
+                        <div class="form-group">
+                            <label class="flex items-center gap-2 mb-2 font-semibold text-gray-800" for="marque">
+                                <i class="fas fa-copyright text-primary-orange"></i> Marque
+                            </label>
+                            <input type="text" id="marque" name="marque" class="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-primary-orange focus:ring-4 focus:ring-primary-orange/30 transition duration-300" required placeholder="Toyota, Honda, etc.">
+                        </div>
+
+                        <!-- Model -->
+                        <div class="form-group">
+                            <label class="flex items-center gap-2 mb-2 font-semibold text-gray-800" for="model">
+                                <i class="fas fa-car text-primary-orange"></i> Modèle
+                            </label>
+                            <input type="text" id="model" name="model" class="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-primary-orange focus:ring-4 focus:ring-primary-orange/30 transition duration-300" required placeholder="Corolla, Civic, etc.">
+                        </div>
+
+                        <!-- Couleur -->
+                        <div class="form-group">
+                            <label class="flex items-center gap-2 mb-2 font-semibold text-gray-800" for="couleur">
+                                <i class="fas fa-palette text-primary-orange"></i> Couleur
+                            </label>
+                            <input type="text" id="couleur" name="couleur" class="w-full p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-primary-orange focus:ring-4 focus:ring-primary-orange/30 transition duration-300" required placeholder="Bleu, Noir, etc.">
+                        </div>
+
+                        <!-- Photo -->
+                        <div class="form-group">
+                            <label class="flex items-center gap-2 mb-2 font-semibold text-gray-800" for="photo">
+                                <i class="fas fa-camera text-primary-orange"></i> Photo
+                            </label>
+                            <input type="file" id="photo" name="photo" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-light file:text-primary-orange hover:file:bg-primary-orange/20 cursor-pointer" accept="image/*">
+                        </div>
+
+                        <!-- Hidden fields for Region info (full-width) -->
+                        <input type="hidden" id="region_name" name="region_name">
+                        <input type="hidden" id="region_polygon" name="region_polygon">
+
+                        <!-- Form Footer (full-width) -->
+                        <div class="md:col-span-2 flex justify-end pt-4">
+                            <button type="submit" class="btn-primary inline-flex items-center justify-center gap-2 font-semibold py-3 px-6 rounded-lg text-lg text-white bg-gradient-to-br from-primary-orange to-primary-orange/80 shadow-primary-orange/50 shadow-xl transition duration-300 hover:scale-[1.01] hover:shadow-primary-orange/60 hover:bg-primary-dark">
+                                <i class="fas fa-plus-circle"></i> Ajouter le Véhicule
+                            </button>
                         </div>
                     </div>
-
-                    <!-- Hidden fields for Region info -->
-                    <input type="hidden" id="region_name" name="region_name">
-                    <input type="hidden" id="region_polygon" name="region_polygon">
-
-                    <div class="form-footer">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-plus-circle"></i> Add Vehicle
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-
-        <!-- Map Container -->
-        <div class="map-container">
-            <div class="map-header">
-                <i class="fas fa-map-marked-alt"></i> Select a Region in Cameroon
+                </form>
             </div>
-            <div id="map"></div>
+
+            <!-- Map Container -->
+            <div class="map-container bg-white rounded-xl shadow-xl h-full flex flex-col relative lg:order-last">
+                <div class="map-header bg-white p-4 font-semibold flex items-center gap-2 border-b border-gray-200 relative">
+                    <i class="fas fa-map-marked-alt text-primary-orange text-xl"></i> Sélectionner une Région du Cameroun
+                </div>
+                <div id="map" class="flex-1 w-full min-h-[400px]"></div>
+                <!-- Simple warning that data is simulated -->
+                <div id="map-warning" class="absolute bottom-0 left-0 right-0 p-2 text-center text-sm bg-yellow-100 text-yellow-800 font-medium opacity-90 z-[500]">
+                    <i class="fas fa-exclamation-triangle mr-1"></i> Données de région simulées (GeoJSON factice) pour la démonstration d'interactivité.
+                </div>
+            </div>
         </div>
     </div>
-</div>
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize map with Cameroon's coordinates
-        let map = L.map('map', {
-            center: [7.3697, 12.3547], // Centered on Cameroon
-            zoom: 6,
-            minZoom: 5,
-            maxBounds: [
-                [-5, 5], // Southwest coordinates
-                [15, 20]  // Northeast coordinates
-            ]
-        });
-
-        // Load OpenStreetMap tiles with improved styling
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-
-        let selectedLayer = null;
-        let selectedTooltip = null;
-
-        // Load Cameroon GeoJSON
-        fetch('{{ asset('geojson/cameroon_regions.json') }}')
-            .then(response => response.json())
-            .then(data => {
-                const regions = L.geoJSON(data, {
-                    style: {
-                        color: '#6c757d',
-                        weight: 1.5,
-                        fillColor: '#FFE2CC',
-                        fillOpacity: 0.4
-                    },
-                    onEachFeature: function(feature, layer) {
-                        // Hover effect
-                        layer.on('mouseover', function() {
-                            if (layer !== selectedLayer) {
-                                layer.setStyle({
-                                    fillColor: '#FFCFA3',
-                                    fillOpacity: 0.6,
-                                    weight: 2
-                                });
-                            }
-                        });
-
-                        layer.on('mouseout', function() {
-                            if (layer !== selectedLayer) {
-                                layer.setStyle({
-                                    color: '#6c757d',
-                                    weight: 1.5,
-                                    fillColor: '#FFE2CC',
-                                    fillOpacity: 0.4
-                                });
-                            }
-                        });
-
-                        // Click event
-                        layer.on('click', function() {
-                            // Remove previous selection
-                            if (selectedLayer) {
-                                selectedLayer.setStyle({
-                                    color: '#9ca3af',
-                                    weight: 1.5,
-                                    fillColor: '#dbeafe',
-                                    fillOpacity: 0.4
-                                });
-                            }
-                            if (selectedTooltip) {
-                                map.removeLayer(selectedTooltip);
-                            }
-
-                            // Set new selection
-                            selectedLayer = layer;
-                            layer.setStyle({
-                                color: '#2563eb',
-                                weight: 3,
-                                fillColor: '#93c5fd',
-                                fillOpacity: 0.7
-                            });
-
-                            const regionName = feature.properties.name || "Unknown Region";
-                            const coordinates = feature.geometry.coordinates[0];
-
-                            // Fill hidden inputs
-                            document.getElementById('region_name').value = regionName;
-                            document.getElementById('region_polygon').value = JSON.stringify({
-                                type: 'Polygon',
-                                coordinates: [coordinates]
-                            });
-
-                            // Show selected region in UI
-                            document.getElementById('region-display-text').textContent = `Selected Region: ${regionName}`;
-                            document.getElementById('selected-region-display').style.display = 'flex';
-
-                            // Fit map to region bounds with some padding
-                            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
-
-                            // Add tooltip showing region name
-                            selectedTooltip = L.tooltip({
-                                permanent: true,
-                                direction: 'center',
-                                className: 'region-label'
-                            })
-                                .setContent(regionName)
-                                .setLatLng(layer.getBounds().getCenter())
-                                .addTo(map);
-
-                            console.log('Selected Region:', regionName);
-                        });
-                    }
-                }).addTo(map);
-
-                // Fit to Cameroon's bounds
-                map.fitBounds(regions.getBounds());
-
-                // Add smooth zoom control
-                map.on('zoomend', function() {
-                    if (selectedLayer) {
-                        selectedLayer.bringToFront();
-                    }
-                });
-            })
-            .catch(error => {
-                console.error('Error loading GeoJSON:', error);
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            // --- Map Initialization ---
+            
+            // Initialize map centered on Cameroon
+            let map = L.map('map', {
+                center: [6.0, 12.5], 
+                zoom: 6,
+                minZoom: 5,
+                maxBounds: [
+                    [-5, 5], 
+                    [15, 20]  
+                ]
             });
-    });
-</script>
+
+            // Load OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 18,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            let selectedLayer = null;
+            let selectedTooltip = null;
+
+            // --- Fictional GeoJSON Data for Demonstration ---
+            // Simulating a couple of regions (Polygons should be in [Lng, Lat] format for GeoJSON)
+            const mockGeoJsonData = {
+                type: "FeatureCollection",
+                features: [
+                    {
+                        type: "Feature",
+                        properties: { "name": "Région du Centre" },
+                        geometry: {
+                            type: "Polygon",
+                            // Simplified mock coordinates for demonstration
+                            coordinates: [[
+                                [11.5, 4.5], [12.5, 3.5], [14.0, 4.0], [13.0, 5.5], [11.5, 4.5]
+                            ]]
+                        }
+                    },
+                    {
+                        type: "Feature",
+                        properties: { "name": "Région de l'Extrême-Nord" },
+                        geometry: {
+                            type: "Polygon",
+                            // Simplified mock coordinates for demonstration
+                            coordinates: [[
+                                [13.0, 12.0], [15.0, 10.5], [14.0, 8.5], [12.0, 10.0], [13.0, 12.0]
+                            ]]
+                        }
+                    }
+                ]
+            };
+
+
+            // --- Map Interaction Logic ---
+
+            const defaultStyle = {
+                color: '#6c757d', // gray-600
+                weight: 1.5,
+                fillColor: '#FFE2CC', // primary-light
+                fillOpacity: 0.4
+            };
+
+            const hoverStyle = {
+                fillColor: '#FFCFA3',
+                fillOpacity: 0.7,
+                weight: 2
+            };
+
+            const selectedStyle = {
+                color: '#2563eb', // blue-600
+                weight: 3,
+                fillColor: '#93c5fd', // blue-300
+                fillOpacity: 0.7
+            };
+
+            const regions = L.geoJSON(mockGeoJsonData, {
+                style: defaultStyle,
+                onEachFeature: function(feature, layer) {
+
+                    // Mouse Events (Hover)
+                    layer.on('mouseover', function() {
+                        if (layer !== selectedLayer) {
+                            layer.setStyle(hoverStyle);
+                        }
+                    });
+
+                    layer.on('mouseout', function() {
+                        if (layer !== selectedLayer) {
+                            layer.setStyle(defaultStyle);
+                        }
+                    });
+
+                    // Click Event (Selection)
+                    layer.on('click', function() {
+                        const regionName = feature.properties.name || "Unknown Region";
+                        const geometry = feature.geometry;
+
+                        // 1. Reset previous selection style and tooltip
+                        if (selectedLayer) {
+                            selectedLayer.setStyle(defaultStyle);
+                        }
+                        if (selectedTooltip) {
+                            map.removeLayer(selectedTooltip);
+                        }
+                        
+                        // 2. Set new selection style
+                        selectedLayer = layer;
+                        layer.setStyle(selectedStyle);
+
+                        // 3. Update hidden form inputs
+                        document.getElementById('region_name').value = regionName;
+                        // Store the polygon data as a JSON string
+                        document.getElementById('region_polygon').value = JSON.stringify(geometry); 
+
+                        // 4. Update visible UI display
+                        document.getElementById('region-display-text').textContent = `Région sélectionnée: ${regionName}`;
+                        document.getElementById('selected-region-display').classList.remove('hidden');
+                        document.getElementById('selected-region-display').classList.add('flex');
+
+                        // 5. Fit map to region bounds and add permanent tooltip
+                        map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+
+                        selectedTooltip = L.tooltip({
+                            permanent: true,
+                            direction: 'center',
+                            className: 'region-label'
+                        })
+                            .setContent(regionName)
+                            .setLatLng(layer.getBounds().getCenter())
+                            .addTo(map);
+
+                        console.log('Région sélectionnée:', regionName, JSON.stringify(geometry));
+                    });
+                }
+            }).addTo(map);
+
+            // Fit map bounds to the loaded GeoJSON data
+            map.fitBounds(regions.getBounds(), { padding: [10, 10] });
+            
+            // Ensure the selected layer is always on top on zoom end
+            map.on('zoomend', function() {
+                if (selectedLayer) {
+                    selectedLayer.bringToFront();
+                }
+            });
+        });
+    </script>
 </body>
 </html>

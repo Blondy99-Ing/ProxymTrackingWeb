@@ -1,207 +1,279 @@
-<!-- resources/views/dashboard.blade.php -->
 @extends('layouts.app')
-<!-- Extension de app.blade.php -->
+
+@section('title', 'Suivi des Utilisateurs')
 
 @section('content')
+<div class="space-y-8 p-4 md:p-8">
 
-
-<!-- Navbar -->
-<nav class="navbar navbar-expand-lg navbar-light bg-body-tertiary">
-    <div class="container-fluid">
-        <button data-mdb-collapse-init class="navbar-toggler" type="button" data-mdb-target="#navbarSupportedContent"
-            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-            <i class="fas fa-bars"></i>
-        </button>
-
-        <div class="collapse navbar-collapse" id="navbarSupportedContent">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <!-- Utilisateurs -->
-                <li class="nav-item {{ request()->is('tracking_users') ? 'active' : '' }}">
-                    <a class="nav-link" href="{{ route('tracking.users') }}">Utilisateurs</a>
-                </li>
-
-                <!-- Agent Swap -->
-                <li class="nav-item {{ request()->is('employe_users') ? 'active' : '' }}">
-                    <a class="nav-link" href=""> Employés</a>
-                </li>
-            </ul>
+    {{-- Bande de navigation secondaire --}}
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-4"
+        style="border-color: var(--color-border-subtle);">
+        <h1 class="text-3xl font-bold font-orbitron" style="color: var(--color-text);">Gestion des Utilisateurs</h1>
+        <div class="flex mt-4 sm:mt-0 space-x-4">
+            <a href="{{ route('tracking.users') }}"
+                class="py-2 px-4 rounded-lg font-semibold text-primary border-b-2 border-primary transition-colors">
+                <i class="fas fa-users mr-2"></i> Utilisateurs
+            </a>
+            <a href="{{ route('employes.index') }}"
+                class="py-2 px-4 rounded-lg font-semibold text-secondary hover:text-primary transition-colors">
+                <i class="fas fa-user-tie mr-2"></i> Employés
+            </a>
         </div>
     </div>
-</nav>
 
-
-<!-- Navbar -->
-
-<!-- ================ Swap Users List ================= -->
-<div class="details">
-    <div class="recentOrders">
-        <div class="cardHeader">
-            <h2>Liste des Utilisateurs</h2>
-            <a href="#" class="btn">Voir Tout</a>
-        </div>
-
-        <table   id="example" class="table">
-    <thead>
-        <tr>
-            <th>Nom et Prenom</th>
-            <th>Phone</th>
-            <th>Ville</th>
-            <th>Quartier</th>
-            <th>Photo</th>
-            <th>Email</th> <!-- Ajout de la colonne Email -->
-        </tr>
-    </thead>
-
-    <tbody>
-        @foreach($users as $user)
-        <tr>
-            <td>{{ $user->nom }} {{ $user->prenom }}</td>
-            <td>{{ $user->phone }}</td>
-            <td>{{ $user->ville }}</td>
-            <td>{{ $user->quartier }}</td>
-            <td>{{ $user->email }}</td> <!-- Affichage de l'email -->
-            <td>
-                <img src="{{ asset('storage/' . $user->photo) }}" alt="Photo" class="img-fluid" width="50">
-            </td>
-        </tr>
-        @endforeach
-    </tbody>
-</table>
-
+    {{-- Messages --}}
+    @if(session('success'))
+    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+        {{ session('success') }}
     </div>
+    @endif
 
-    <!-- ================= Add Swap User Form ================ -->
-    <div class="recentCustomers">
-        <div class="cardHeader">
-            <h2>Ajouter un Utilisateur</h2>
+    @if($errors->any())
+    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <strong>Erreurs de validation :</strong>
+        <ul class="list-disc list-inside mt-1">
+            @foreach($errors->all() as $error)
+            <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+    @endif
+
+    <!-- ================ Liste des Utilisateurs ================ -->
+    <div class="ui-card">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold font-orbitron">Liste des Utilisateurs</h2>
+            <button type="button" id="openAddModalBtn" class="btn-primary text-sm">
+                <i class="fas fa-plus mr-2"></i> Ajouter un Utilisateur
+            </button>
         </div>
 
-        <!-- Bootstrap Form to Add a Swap User -->
-        <form action="{{ route('tracking.users.store') }}" method="POST" enctype="multipart/form-data">
-            @csrf
-            @if ($errors->any())
-            <div class="alert alert-danger">
-                <ul>
-                    @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
+        <div class="ui-table-container shadow-md">
+            <table id="usersTable" class="ui-table w-full">
+                <thead>
+                    <tr>
+                        <th>Nom et Prénom</th>
+                        <th>Téléphone</th>
+                        <th>Ville</th>
+                        <th>Quartier</th>
+                        <th>Email</th>
+                        <th>Photo</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($users ?? [] as $user)
+                    <tr>
+                        <td>{{ $user->nom }} {{ $user->prenom }}</td>
+                        <td>{{ $user->phone }}</td>
+                        <td>{{ $user->ville }}</td>
+                        <td>{{ $user->quartier }}</td>
+                        <td>{{ $user->email }}</td>
+                        <td>
+                            <img src="{{ $user->photo ? asset('storage/' . $user->photo) : 'https://placehold.co/40x40/F58220/ffffff?text=No+Photo' }}"
+                                alt="Photo" class="h-10 w-10 object-cover rounded-full">
+                        </td>
+                        <td class="space-x-2">
+                            <button class="btn-secondary btn-edit" data-user="{{ json_encode($user) }}">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <form action="{{ route('tracking.users.destroy', $user->id) }}" method="POST"
+                                class="inline-block">
+                                @csrf
+                                @method('DELETE')
+                                <button class="btn-danger" onclick="return confirm('Confirmer la suppression ?')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
                     @endforeach
-                </ul>
-            </div>
-            @endif
+                </tbody>
+            </table>
+        </div>
+    </div>
 
-            <div class="form-row">
-                <div class="form-group col-md-6">
-                    <label for="nom">Nom</label>
-                    <input type="text" class="form-control" id="nom" name="nom" placeholder="nom..." required>
-                </div>
-                <div class="form-group col-md-6">
-                    <label for="prenom">Prenom</label>
-                    <input type="text" class="form-control" id="prenom" name="prenom" placeholder="prenom..." required>
-                </div>
-            </div>
+</div>
 
-            <div class="form-row">
-                <div class="form-group col-md-6">
-                    <label for="phone">Phone</label>
-                    <input type="tel" class="form-control" id="phone" name="phone" placeholder="téléphone..." required>
-                </div>
-                <div class="form-group col-md-6">
-                    <label for="email">Email</label>
-                    <input type="email" class="form-control" id="email" name="email" placeholder="email..." required>
-                </div>
-                <!-- Champ select pour le rôle -->
+<!-- ================ Modale Ajout/Édition ================ -->
+<div id="userModal" class="fixed  inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+    <div
+        class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-2xl p-6 relative shadow-lg transform transition-transform duration-300 scale-95 opacity-0">
+        <button id="closeModalBtn"
+            class="absolute top-4 right-4 text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white text-xl font-bold">&times;</button>
+        <h2 id="modalTitle" class="text-xl font-bold font-orbitron mb-6 text-gray-900 dark:text-gray-100">Ajouter un
+            Utilisateur</h2>
 
-                <div class="form-group col-md-6">
-                    <label for="ville">Ville</label>
-                    <input type="text" class="form-control" id="ville" name="ville" placeholder="ville..." required>
-                </div>
-            </div>
+        <form id="userForm" method="POST" enctype="multipart/form-data" class="space-y-4">
+            @csrf
+            <input type="hidden" id="userId" name="user_id">
 
-            <div class="form-row">
-                <div class="form-group col-md-6">
-                    <label for="quartier">Quartier</label>
-                    <input type="text" class="form-control" id="quartier" name="quartier" placeholder="quartier..."
-                        required>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="nom" class="block text-sm font-medium text-secondary dark:text-gray-300">Nom</label>
+                    <input type="text" id="nom" name="nom"
+                        class="ui-input-style mt-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required>
                 </div>
-
-                <div class="form-group col-md-6 mb-0">
-                    <label for="photo">Photo</label>
-                    <label for="photo" class="btn-perso file-label mb-2">Choisir une Photo</label>
-                    <input type="file" class="form-control file-input" id="photo" name="photo" required>
-                    <div id="file-name" class="mt-2 text-muted">Aucun fichier selectioné</div>
+                <div>
+                    <label for="prenom" class="block text-sm font-medium text-secondary dark:text-gray-300">Prénom</label>
+                    <input type="text" id="prenom" name="prenom"
+                        class="ui-input-style mt-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required>
                 </div>
             </div>
-            
 
-            <div class="form-group col-md-12 ">
-                <label for="password">Password</label>
-                <input type="password" class="form-control" id="password" name="password" placeholder="Mot de passe..."
-                    required>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="phone" class="block text-sm font-medium text-secondary dark:text-gray-300">Téléphone</label>
+                    <input type="tel" id="phone" name="phone"
+                        class="ui-input-style mt-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required>
+                </div>
+                <div>
+                    <label for="email" class="block text-sm font-medium text-secondary dark:text-gray-300">Email</label>
+                    <input type="email" id="email" name="email"
+                        class="ui-input-style mt-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required>
+                </div>
             </div>
 
-            <div class="form-group col-md-12 ">
-                <label for="password_confirmation">Confirmer le mot de passe</label>
-                <input type="password" class="form-control" id="password_confirmation" name="password_confirmation"
-                    placeholder="Confirmer le mot de passe..." required>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="ville" class="block text-sm font-medium text-secondary dark:text-gray-300">Ville</label>
+                    <input type="text" id="ville" name="ville"
+                        class="ui-input-style mt-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="quartier" class="block text-sm font-medium text-secondary dark:text-gray-300">Quartier</label>
+                    <input type="text" id="quartier" name="quartier"
+                        class="ui-input-style mt-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                </div>
             </div>
 
-            <button type="submit" class="btn-perso">Ajouter l'Utilisateur</button>
+            <div class="space-y-2">
+                <label for="photo" class="block text-sm font-medium text-secondary dark:text-gray-300">Photo</label>
+                <label for="photo"
+                    class="btn-secondary w-full text-center cursor-pointer transition-colors text-base dark:text-gray-200 dark:border-gray-500 dark:hover:bg-gray-600">
+                    Choisir un fichier
+                </label>
+                <input type="file" class="hidden" id="photo" name="photo" accept="image/*">
+                <div id="file-name" class="text-xs text-secondary dark:text-gray-300 italic">Aucun fichier sélectionné
+                </div>
+                <img id="preview" src="#" alt="Aperçu" class="mt-2 h-24 w-24 object-cover rounded-full hidden border dark:border-gray-600">
+            </div>
+
+            <div id="passwordFields" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="password" class="block text-sm font-medium text-secondary dark:text-gray-300">Mot de
+                        passe</label>
+                    <input type="password" id="password" name="password"
+                        class="ui-input-style mt-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="password_confirmation"
+                        class="block text-sm font-medium text-secondary dark:text-gray-300">Confirmer le mot de
+                        passe</label>
+                    <input type="password" id="password_confirmation" name="password_confirmation"
+                        class="ui-input-style mt-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary w-full mt-6" id="submitBtn">
+                <i class="fas fa-user-plus mr-2"></i> Ajouter
+            </button>
         </form>
-
     </div>
 </div>
-</div>
+
 
 <script>
-document.getElementById('photo').addEventListener('change', function() {
-    var fileName = this.files[0] ? this.files[0].name : 'No file chosen';
-    document.getElementById('file-name').textContent = 'Fichier : ' + fileName;
-});
-</script>
-
-<script>
-// Initialization for ES Users
-import {
-    Dropdown,
-    Collapse,
-    initMDB
-} from "mdb-ui-kit";
-
-initMDB({
-    Dropdown,
-    Collapse
-});
-</script>
-<script>
-// Ajout de la classe 'active' au lien correspondant à l'URL actuelle
 document.addEventListener('DOMContentLoaded', function() {
-    const currentPath = window.location.pathname;
 
-    // Liste des liens de la navbar
-    const navLinks = document.querySelectorAll('.navbar-nav .nav-item');
-
-    navLinks.forEach(link => {
-        const linkPath = link.querySelector('a').getAttribute('href');
-
-        // Comparer l'URL actuelle avec l'URL du lien
-        if (currentPath === linkPath) {
-            link.classList.add('active'); // Ajouter la classe active si l'URL correspond
+    // --- DataTables ---
+    $('#usersTable').DataTable({
+        "language": {
+            "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/fr-FR.json"
         }
     });
+
+    // --- Modal centrée ---
+    const modal = document.getElementById('userModal');
+    const openAddBtn = document.getElementById('openAddModalBtn');
+    const closeBtn = document.getElementById('closeModalBtn');
+    const modalTitle = document.getElementById('modalTitle');
+    const userForm = document.getElementById('userForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const userIdInput = document.getElementById('userId');
+    const passwordFields = document.getElementById('passwordFields');
+
+    function openModal() {
+        modal.classList.remove('hidden');
+        setTimeout(() => modal.firstElementChild.classList.remove('scale-95', 'opacity-0'), 10);
+    }
+
+    function closeModal() {
+        modal.firstElementChild.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => modal.classList.add('hidden'), 200);
+        userForm.reset();
+        document.getElementById('preview').classList.add('hidden');
+        passwordFields.style.display = 'block';
+        submitBtn.textContent = 'Ajouter';
+        modalTitle.textContent = 'Ajouter un Utilisateur';
+        userForm.action = "{{ route('tracking.users.store') }}";
+        userIdInput.value = '';
+    }
+
+    openAddBtn.addEventListener('click', openModal);
+    closeBtn.addEventListener('click', closeModal);
+
+    // --- Photo preview ---
+    const photoInput = document.getElementById('photo');
+    const fileNameDisplay = document.getElementById('file-name');
+    const preview = document.getElementById('preview');
+
+    photoInput.addEventListener('change', function() {
+        const file = this.files[0];
+        if (file) {
+            fileNameDisplay.textContent = 'Fichier : ' + file.name;
+            const reader = new FileReader();
+            reader.onload = e => {
+                preview.src = e.target.result;
+                preview.classList.remove('hidden');
+            }
+            reader.readAsDataURL(file);
+        } else {
+            fileNameDisplay.textContent = 'Aucun fichier sélectionné';
+            preview.classList.add('hidden');
+        }
+    });
+
+    // --- Edition ---
+    document.querySelectorAll('.btn-edit').forEach(button => {
+        button.addEventListener('click', () => {
+            const user = JSON.parse(button.getAttribute('data-user'));
+
+            modalTitle.textContent = 'Modifier l\'Utilisateur';
+            submitBtn.textContent = 'Mettre à jour';
+            userForm.action = `/users/${user.id}`; // route PUT
+            userForm.insertAdjacentHTML('beforeend',
+                '<input type="hidden" name="_method" value="PUT">');
+            userIdInput.value = user.id;
+            document.getElementById('nom').value = user.nom;
+            document.getElementById('prenom').value = user.prenom;
+            document.getElementById('phone').value = user.phone;
+            document.getElementById('email').value = user.email;
+            document.getElementById('ville').value = user.ville;
+            document.getElementById('quartier').value = user.quartier;
+            passwordFields.style.display = 'block';
+
+            if (user.photo) {
+                preview.src = `/storage/${user.photo}`;
+                preview.classList.remove('hidden');
+            } else {
+                preview.classList.add('hidden');
+            }
+
+            openModal();
+        });
+    });
 });
 </script>
 
-
-<!-- Inclusion des fichiers JS -->
-<script src="https://code.jquery.com/jquery-3.7.1.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.datatables.net/2.2.1/js/dataTables.js"></script>
-<script src="https://cdn.datatables.net/2.2.1/js/dataTables.bootstrap5.js"></script>
-
-<script>
-    // Initialisation de DataTables
-    $(document).ready(function() {
-        $('#example').DataTable();
-    });
-</script>
 @endsection

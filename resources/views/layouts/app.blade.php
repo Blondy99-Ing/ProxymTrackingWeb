@@ -1,341 +1,759 @@
-<!-- Sidebar Section -->
-<div class="sidebar">
-    <div class="brand">
-        <div class="icon"><i class="fas fa-map-marker-alt" style="color: #FF5722; font-size: 24px;"></i></div>
-        <div class="logo-text">ProxymTracking</div>
-    </div>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@yield('title', 'ProxymTracking Dashboard')</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <ul class="sidebar-nav">
-        <li>
-            <a href="{{ route('dashboard') }}" class="{{ request()->is('dashboard') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-tachometer-alt"></i></span>
-                <span class="title">Dashboard</span>
-            </a>
-        </li>
-        <li>
-            <a href="{{ route('tracking.users') }}" class="{{ request()->is('tracking_users') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-users"></i></span>
-                <span class="title">Users</span>
-            </a>
-        </li>
-        <li>
-            <a href="{{ route('tracking.vehicles') }}" class="{{ request()->is('tracking.vehicles') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-car"></i></span>
-                <span class="title">Vehicles</span>
-            </a>
-        </li>
-        <li>
-            <a href="{{ route('association.index') }}" class="{{ request()->is('association*') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-link"></i></span>
-                <span class="title">Association</span>
-            </a>
-        </li>
-        <li>
-            <a href="{{ route('alerts.index') }}" class="{{ request()->routeIs('alerts.index') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
-                <span class="title">Alerts</span>
-            </a>
-        </li>
-        <li>
-            <a href="{{ route('reports.index') }}" class="{{ request()->is('reports*') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-chart-line"></i></span>
-                <span class="title">Reports</span>
-            </a>
-        </li>
-        <li>
-            <a href="{{ route('settings.index') }}" class="{{ request()->is('settings*') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-cog"></i></span>
-                <span class="title">Settings</span>
-            </a>
-        </li>
-    </ul>
-</div>
+    <!-- Chargement de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chargement de la police Orbitron depuis Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome pour les icônes -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    
+    @stack('head')
 
-<!-- Toggle Button for Mobile -->
-<div class="toggle-sidebar">
-    <i class="fas fa-bars"></i>
-</div>
+    <style>
+        /* --- DESIGN SYSTEM : COULEURS ET POLICES --- */
+        :root {
+            --color-primary: #F58220; /* Orange vibrant */
+            --color-primary-light: #FF9800;
+            --color-primary-dark: #E65100;
+            --font-family: 'Orbitron', sans-serif;
+            --sidebar-width: 260px;
+            --sidebar-collapsed-width: 80px;
+        }
 
-<!-- CSS Styles for Sidebar -->
-<style>
-    :root {
-        --primary: #FF5722;
-        --primary-light: #FF7D51;
-        --primary-dark: #E64A19;
-        --secondary: #212121;
-        --secondary-light: #484848;
-        --secondary-dark: #000000;
-        --white: #FFFFFF;
-        --light-gray: #F5F5F5;
-        --mid-gray: #E0E0E0;
-        --dark-gray: #757575;
-    }
+        .font-orbitron { font-family: var(--font-family); }
 
-    /* Sidebar */
-    .sidebar {
-        position: fixed;
-        width: 260px;
-        height: 100vh;
-        background-color: var(--secondary);
-        transition: 0.3s ease;
-        overflow-y: auto;
-        z-index: 1000;
-        box-shadow: 4px 0 10px rgba(0, 0, 0, 0.1);
-    }
+        /* --- LIGHT MODE VARIABLES (Par Défaut) --- */
+        .light-mode {
+            --color-bg: #f3f4f6;
+            --color-card: #ffffff;
+            --color-text: #111827;
+            --color-input-bg: #ffffff;
+            --color-input-border: #d1d5db;
+            --color-secondary-text: #6b7280;
+            --color-sidebar-bg: #ffffff;
+            --color-sidebar-text: #1f2937;
+            --color-sidebar-active-bg: rgba(245, 130, 32, 0.1);
+            --color-border-subtle: #e5e7eb;
+            --color-navbar-bg: #ffffff;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+        }
 
-    .sidebar.collapsed {
-        width: 80px;
-    }
+        /* --- DARK MODE VARIABLES --- */
+        .dark-mode {
+            --color-bg: #121212; /* Fond très sombre */
+            --color-card: #1f2937; /* Cartes et boîtes de dialogue */
+            --color-text: #f3f4f6; /* Texte clair */
+            --color-input-bg: #374151; /* Fond des champs sombres */
+            --color-input-border: #4b5563; /* Bordure des champs sombres */
+            --color-secondary-text: #9ca3af; /* Texte secondaire */
+            --color-sidebar-bg: #1f2937; /* Sidebar sombre */
+            --color-sidebar-text: #f3f4f6;
+            --color-sidebar-active-bg: rgba(245, 130, 32, 0.25);
+            --color-border-subtle: #374151; /* Bordures sombres */
+            --color-navbar-bg: #1f2937; /* Navbar sombre */
+            background-color: var(--color-bg);
+            color: var(--color-text);
+        }
 
-    .sidebar .brand {
-        display: flex;
-        align-items: center;
-        padding: 24px 20px;
-        color: var(--white);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
+        /* --- LAYOUT GÉNÉRAL --- */
+        body { min-height: 100vh; }
 
-    .sidebar .brand .icon {
-        min-width: 40px;
-        display: flex;
-        justify-content: center;
-    }
-
-    .sidebar .brand .logo-text {
-        font-size: 20px;
-        font-weight: 700;
-        white-space: nowrap;
-        opacity: 1;
-        transition: 0.3s ease;
-        letter-spacing: 0.5px;
-    }
-
-    .sidebar.collapsed .brand .logo-text {
-        opacity: 0;
-        pointer-events: none;
-    }
-
-    .sidebar-nav {
-        padding: 10px 0;
-        list-style: none;
-        margin: 0;
-    }
-
-    .sidebar-nav li {
-        position: relative;
-        margin: 8px 12px;
-        list-style: none;
-    }
-
-    .sidebar-nav li a {
-        display: flex;
-        align-items: center;
-        padding: 14px 16px;
-        color: var(--mid-gray);
-        text-decoration: none;
-        transition: all 0.3s ease;
-        border-radius: 8px;
-        border-left: 3px solid transparent;
-    }
-
-    .sidebar-nav li a:hover,
-    .sidebar-nav li a.active {
-        color: var(--primary);
-        background: rgba(255, 87, 34, 0.08);
-        border-left: 3px solid var(--primary);
-    }
-
-    .sidebar-nav li a .icon {
-        font-size: 20px;
-        min-width: 40px;
-        display: flex;
-        justify-content: center;
-    }
-
-    .sidebar-nav li a .title {
-        white-space: nowrap;
-        opacity: 1;
-        transition: 0.3s ease;
-        font-weight: 500;
-    }
-
-    .sidebar.collapsed .sidebar-nav li a .title {
-        opacity: 0;
-        pointer-events: none;
-    }
-
-    /* Toggle Button */
-    .toggle-sidebar {
-        position: fixed;
-        top: 20px;
-        left: 20px;
-        width: 40px;
-        height: 40px;
-        background: var(--white);
-        border-radius: 50%;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        cursor: pointer;
-        z-index: 1001;
-        font-size: 18px;
-        color: var(--secondary);
-        transition: 0.3s ease;
-    }
-
-    .toggle-sidebar:hover {
-        background: var(--primary);
-        color: var(--white);
-    }
-
-    /* Main Content Adjustment */
-    .main-content {
-        margin-left: 260px;
-        transition: 0.3s ease;
-    }
-
-    .main-content.expanded {
-        margin-left: 80px;
-    }
-
-    /* Responsive */
-    @media (max-width: 991px) {
+        /* --- SIDEBAR STYLES --- */
         .sidebar {
-            width: 80px;
-        }
-
-        .sidebar .brand .logo-text {
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .sidebar .sidebar-nav li a .title {
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .main-content {
-            margin-left: 80px;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .sidebar {
-            left: -80px;
-        }
-
-        .sidebar.active {
-            left: 0;
-            width: 260px;
-        }
-
-        .sidebar.active .brand .logo-text,
-        .sidebar.active .sidebar-nav li a .title {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        .main-content {
-            margin-left: 0;
-        }
-
-        .overlay {
+            width: var(--sidebar-width);
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 999;
+            bottom: 0;
+            z-index: 20; 
+            transition: width 0.3s ease, transform 0.3s ease, background-color 0.3s;
+            overflow-y: auto;
+            border-right: 1px solid var(--color-border-subtle);
+            padding-bottom: 5rem;
+            background-color: var(--color-sidebar-bg);
+        }
+
+        /* Sidebar en mode rétracté (collapsed) */
+        .sidebar.collapsed {
+            width: var(--sidebar-collapsed-width);
+        }
+        .sidebar.collapsed .logo-text,
+        .sidebar.collapsed .title,
+        .sidebar.collapsed .nav-dropdown,
+        .sidebar.collapsed .profile-text {
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.1s;
+        }
+        .sidebar.collapsed .dropdown-toggle .fa-chevron-right {
             display: none;
         }
 
-        .overlay.active {
-            display: block;
+        /* Logo et Texte du Branding */
+        .brand {
+            display: flex;
+            align-items: center;
+            padding: 1.5rem 1.5rem 2rem;
+            white-space: nowrap;
+            overflow: hidden;
+            border-bottom: 1px solid var(--color-border-subtle);
         }
-    }
+        .sidebar.collapsed .brand {
+            padding: 1.5rem 0.5rem 2rem;
+            justify-content: center;
+            /* La ligne de séparation reste en mode rétracté sur desktop pour la cohérence */
+        }
+        .brand .icon {
+            min-width: 48px;
+        }
+        .brand .logo-text {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: var(--color-primary); /* Le logo (texte) utilise la couleur primaire */
+        }
+        
+        /* Liens de Navigation */
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1.5rem;
+            margin: 0.25rem 0.5rem;
+            color: var(--color-sidebar-text);
+            transition: background-color 0.2s, color 0.2s;
+            border-radius: 0.5rem;
+            position: relative;
+        }
+        .sidebar.collapsed .sidebar-nav a {
+            justify-content: center;
+            padding: 0.75rem 0;
+            margin: 0.25rem 0.5rem;
+        }
+        .sidebar-nav a:hover,
+        .sidebar-nav a.active {
+            background-color: var(--color-sidebar-active-bg);
+            color: var(--color-primary);
+        }
+        .sidebar-nav a .icon {
+            min-width: 48px;
+            font-size: 1.1rem;
+            text-align: center;
+            color: var(--color-secondary-text);
+        }
+        .sidebar-nav a:hover .icon,
+        .sidebar-nav a.active .icon {
+             color: var(--color-primary);
+        }
 
-    /* Transitions and Animations */
-    .sidebar-nav li a {
-        position: relative;
-        overflow: hidden;
-    }
+        /* Sous-menus (Dropdowns) */
+        .nav-dropdown {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            padding-left: 2rem;
+            background-color: var(--color-sidebar-bg); /* S'assure que le fond reste cohérent */
+        }
+        .nav-dropdown.open {
+            max-height: 500px;
+        }
+        .nav-dropdown a {
+            padding-left: 1.5rem;
+            margin: 0.1rem 0.5rem;
+            font-size: 0.9rem;
+        }
+        .sidebar.collapsed .nav-dropdown {
+            display: none; 
+        }
+        .dropdown-toggle .fa-chevron-right {
+            position: absolute;
+            right: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+        .dropdown-toggle.open .fa-chevron-right {
+            transform: rotate(90deg);
+        }
 
-    .sidebar-nav li a::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255, 87, 34, 0.1), transparent);
-        transition: 0.5s;
-    }
 
-    .sidebar-nav li a:hover::before {
-        left: 100%;
-    }
-</style>
+        /* --- MAIN CONTENT & NAVBAR ADAPTATION --- */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            transition: margin-left 0.3s ease;
+            min-height: 100vh;
+            padding-top: 5rem; 
+        }
+        .main-content.expanded {
+            margin-left: var(--sidebar-collapsed-width);
+        }
 
-<!-- JavaScript for Sidebar Toggle -->
+        .navbar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            left: var(--sidebar-width);
+            height: 5rem;
+            z-index: 10;
+            background-color: var(--color-navbar-bg);
+            border-bottom: 1px solid var(--color-border-subtle);
+            transition: left 0.3s ease, background-color 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 2rem;
+        }
+        /* Adaptation de la navbar lorsque la sidebar est rétractée */
+        .navbar.expanded {
+            left: var(--sidebar-collapsed-width);
+        }
+        
+        /* Dropdown Navbar (User Menu) */
+        .user-dropdown-menu {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 10px);
+            z-index: 30;
+            width: 200px;
+            background-color: var(--color-card);
+            border: 1px solid var(--color-border-subtle);
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: opacity 0.2s, transform 0.2s, visibility 0s 0.2s;
+        }
+        .user-dropdown-menu.open {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+            transition: opacity 0.2s, transform 0.2s, visibility 0s;
+        }
+        .user-dropdown-menu a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: var(--color-text);
+            transition: background-color 0.2s;
+        }
+        .user-dropdown-menu a:hover {
+            background-color: var(--color-sidebar-active-bg);
+            color: var(--color-primary);
+        }
+
+        /* --- DARK MODE TOGGLE SWITCH STYLING (AJOUTÉ) --- */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 25px;
+            cursor: pointer;
+            border-radius: 12.5px;
+            background-color: var(--color-input-border);
+            transition: background-color 0.3s;
+            flex-shrink: 0;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 19px;
+            height: 19px;
+            border-radius: 50%;
+            background-color: var(--color-card); 
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+            transition: transform 0.3s ease, background 0.3s;
+        }
+        
+        .toggle-switch.toggled {
+            background-color: var(--color-primary); 
+        }
+
+        .toggle-switch.toggled::after {
+            transform: translateX(25px);
+            background-color: #ffffff;
+        }
+        /* Fin du style pour le Toggle Switch */
+
+
+        /* --- STYLES DES COMPOSANTS UI (Tableaux, Formulaires, Cartes) --- */
+        
+        /* Carte/Conteneur */
+        .ui-card {
+            background-color: var(--color-card);
+            border: 1px solid var(--color-border-subtle);
+            color: var(--color-text);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        /* Champs de Formulaire / Input */
+        .ui-input-style, .ui-textarea-style, .ui-select-style {
+            background-color: var(--color-input-bg);
+            border: 1px solid var(--color-input-border);
+            color: var(--color-text);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+        .ui-input-style:focus, .ui-textarea-style:focus, .ui-select-style:focus {
+            outline: none;
+            border-color: var(--color-primary) !important;
+            box-shadow: 0 0 0 3px rgba(245, 130, 32, 0.4);
+        }
+
+        /* Tableau */
+        .ui-table-container {
+            overflow-x: auto;
+            border-radius: 0.5rem;
+            border: 1px solid var(--color-border-subtle);
+        }
+        .ui-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .ui-table th {
+            font-family: var(--font-family);
+            background-color: var(--color-border-subtle); /* Utilisation de la couleur de bordure/fond secondaire */
+            color: var(--color-text);
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 2px solid var(--color-primary);
+        }
+        .ui-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--color-border-subtle);
+        }
+        .ui-table tr:hover {
+             background-color: var(--color-sidebar-active-bg);
+        }
+
+        /* Styles des boutons (conservés) */
+        .btn-primary { background-color: var(--color-primary); color: white; padding: 0.5rem 1.5rem; border-radius: 0.5rem; font-weight: 600; transition: background-color 0.2s, transform 0.1s; font-family: var(--font-family); }
+        .btn-primary:hover { background-color: var(--color-primary-dark); transform: translateY(-1px); }
+        .btn-secondary { color: var(--color-primary); border: 1px solid var(--color-primary); padding: 0.5rem 1.5rem; border-radius: 0.5rem; font-weight: 600; transition: background-color 0.2s; background-color: transparent; font-family: var(--font-family); }
+        .btn-secondary:hover { background-color: rgba(245, 130, 32, 0.1); }
+        
+        /* Styles divers (conservés) */
+        .navbar-icon-btn { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 1.1rem; color: var(--color-text); transition: background-color 0.2s, color 0.2s; cursor: pointer; }
+        .navbar-icon-btn:hover { background-color: var(--color-sidebar-active-bg); color: var(--color-primary); }
+        .text-primary { color: var(--color-primary); }
+        .text-secondary { color: var(--color-secondary-text); }
+
+
+          map {
+    width: 100%;
+    height: 400px; /* Hauteur fixe pour que Leaflet sache où dessiner */
+    min-height: 300px;
+}
+
+/* Toggle formulaire */
+#vehicle-form.hidden {
+    display: none;
+}
+
+
+
+        
+        /* --- MOBILE STYLES (md: 768px) --- */
+        @media (max-width: 767px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: var(--sidebar-width);
+            }
+            .sidebar.active {
+                transform: translateX(0);
+                box-shadow: 5px 0 10px rgba(0, 0, 0, 0.2);
+            }
+            .main-content {
+                margin-left: 0;
+            }
+            .navbar {
+                left: 0;
+                padding-left: 5rem;
+            }
+            .toggle-sidebar {
+                display: flex !important;
+            }
+            .overlay {
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background-color: rgba(0, 0, 0, 0.5);
+                z-index: 19;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease;
+            }
+            .overlay.active {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            /* Désactiver les classes 'expanded' sur mobile */
+            .main-content.expanded, .navbar.expanded {
+                margin-left: 0 !important;
+                left: 0 !important;
+            }
+        }
+        @media (min-width: 768px) {
+             .toggle-sidebar { display: none !important; } 
+             .sidebar.collapsed .sidebar-nav a .icon { margin-left: -0.25rem; }
+        }
+
+        .toggle-sidebar {
+            position: fixed; top: 1rem; left: 1rem; width: 40px; height: 40px;
+            align-items: center; justify-content: center; font-size: 1.25rem;
+            border-radius: 50%; cursor: pointer; z-index: 25;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            background-color: var(--color-card); color: var(--color-primary);
+            border: 1px solid var(--color-primary); transition: background-color 0.2s, color 0.2s;
+        }
+        .toggle-sidebar:hover { background-color: var(--color-primary); color: var(--color-card); }
+        
+    </style>
+
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+
+</head>
+<body class="light-mode" id="theme-container">
+
+    <!-- Sidebar Section -->
+    <div class="sidebar" id="sidebar">
+        <!-- Logo et Titre -->
+        <div class="brand">
+            <div class="icon">
+                 <!-- L'icône de logo utilise la couleur primaire, visible en mode sombre/clair -->
+                 <i class="fas fa-map-marker-alt" style="color: var(--color-primary); font-size: 24px;"></i>
+            </div>
+            <div class="logo-text">ProxymTracking</div>
+        </div>
+        
+        <!-- Bouton pour Rétracter la sidebar sur Desktop -->
+        <div class="hidden md:flex justify-end px-4 mb-4">
+             <button id="toggle-sidebar-desktop" class="navbar-icon-btn">
+                 <i class="fas fa-chevron-left transition-transform duration-300" id="toggle-icon-desktop"></i>
+             </button>
+        </div>
+
+        <!-- Liens de Navigation -->
+        <ul class="sidebar-nav">
+            <li>
+                <a href="{{ route('dashboard') ?? '#' }}" class="{{ request()->is('dashboard') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-tachometer-alt"></i></span>
+                    <span class="title">Dashboard</span>
+                </a>
+            </li>
+            
+            <!-- Lien avec Sous-Menu (Module de Suivi) -->
+            <li class="nav-item">
+                <a href="#" class="dropdown-toggle" data-dropdown="tracking-menu">
+                    <span class="icon"><i class="fas fa-satellite-dish"></i></span>
+                    <span class="title">Suivi & Localisation</span>
+                    <i class="fas fa-chevron-right text-xs ml-auto"></i>
+                </a>
+                <ul class="nav-dropdown" id="tracking-menu">
+                    <li><a href="{{ route('tracking.users') ?? '#' }}" class="{{ request()->is('tracking_users') ? 'active' : '' }}">Utilisateurs</a></li>
+                    <li><a href="{{ route('tracking.vehicles') ?? '#' }}" class="{{ request()->is('tracking.vehicles') ? 'active' : '' }}">Véhicules</a></li>
+                    <li><a href="#" class="{{ request()->is('tracking.zones') ? 'active' : '' }}">Zones</a></li>
+                </ul>
+            </li>
+            
+            <li>
+                <a href="{{ route('association.index') ?? '#' }}" class="{{ request()->is('association*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-link"></i></span>
+                    <span class="title">Associations</span>
+                </a>
+            </li>
+            <li>
+                <a href="{{ route('alerts.index') ?? '#' }}" class="{{ request()->routeIs('alerts.index') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
+                    <span class="title">Alertes</span>
+                </a>
+            </li>
+        </ul>
+        
+        <!-- Section Pied de page de la Sidebar (Déconnexion) -->
+        <div class="absolute bottom-0 left-0 w-full p-2 border-t border-solid border-border-subtle" style="background-color: var(--color-sidebar-bg);">
+            <a href="{{ route('logout') ?? '#' }}" class="flex items-center p-2 rounded-lg text-secondary hover:text-red-500 transition-colors sidebar-logout-link" title="Déconnexion">
+                <span class="icon"><i class="fas fa-sign-out-alt"></i></span>
+                <span class="title font-bold profile-text">Déconnexion</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Toggle Button for Mobile -->
+    <div class="toggle-sidebar" id="toggle-btn">
+        <i class="fas fa-bars"></i>
+    </div>
+    
+    <!-- NAVBAR (Barre de Navigation Supérieure) -->
+    <div class="navbar" id="navbar">
+        
+        <div class="flex-grow">
+            <!-- Exemple de titre de page -->
+            <h1 class="text-xl font-semibold hidden sm:block" style="color: var(--color-text);">@yield('title', 'Dashboard')</h1>
+        </div>
+
+        <div class="flex items-center space-x-4">
+            
+            <!-- 1. Toggle Mode Sombre/Clair (TOUJOURS PRÉSENT) -->
+             <div class="flex items-center">
+                 <span class="text-sm mr-2 pt-0.5 font-orbitron hidden lg:block" style="color: var(--color-secondary-text);" id="mode-label">Mode Clair</span>
+                <div id="theme-toggle" class="toggle-switch"></div>
+            </div>
+            
+            <!-- 2. Notifications -->
+            <div class="relative">
+                <button class="navbar-icon-btn" title="Notifications">
+                    <i class="fas fa-bell"></i>
+                    <span class="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full border" style="border-color: var(--color-card);"></span>
+                </button>
+                <!-- Menu de notifications (caché) -->
+            </div>
+
+            <!-- 3. Menu Utilisateur -->
+            <div class="relative" id="user-menu-container">
+                <button class="flex items-center space-x-2 p-1 rounded-full hover:bg-sidebar-active-bg transition-colors" id="user-menu-toggle">
+                    <img src="https://placehold.co/36x36/F58220/ffffff?text=U" alt="Profile" class="h-9 w-9 rounded-full object-cover border-2 border-primary">
+                    <span class="font-semibold hidden lg:block profile-text" style="color: var(--color-text);">John Doe</span>
+                </button>
+                
+                <!-- Dropdown Utilisateur -->
+                <div class="user-dropdown-menu" id="user-menu">
+                    <div class="p-3 border-b" style="border-color: var(--color-border-subtle);">
+                        <p class="font-semibold">John Doe</p>
+                        <p class="text-xs text-secondary">john.doe@email.com</p>
+                    </div>
+                    <a href="{{ route('profile.edit') ?? '#' }}"><i class="fas fa-user-circle mr-2"></i> Mon Profil</a>
+                    <a href="#"><i class="fas fa-cog mr-2"></i> Paramètres</a>
+                    <a href="{{ route('logout') ?? '#' }}" class="text-red-500"><i class="fas fa-sign-out-alt mr-2"></i> Déconnexion</a>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="main-content" id="main-content">
+        <!-- Contenu de la page -->
+        <div class="p-8">
+             <div class="page-content">
+                 @yield('content')
+             </div>
+             
+          
+             
+           
+             
+        </div>
+        
+        <!-- Pour s'assurer que le bas de la page n'est pas caché par la barre de déconnexion de la sidebar -->
+        <div class="h-10"></div>
+    </div>
+
+<!-- JavaScript for Sidebar Toggle, Theme, and Dropdowns -->
+
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Toggle sidebar
-        const toggleBtn = document.querySelector('.toggle-sidebar');
-        const sidebar = document.querySelector('.sidebar');
-        const mainContent = document.querySelector('.main-content');
-
-        toggleBtn.addEventListener('click', function() {
-            sidebar.classList.toggle('collapsed');
-            sidebar.classList.toggle('active');
-            mainContent.classList.toggle('expanded');
-
-            // Create overlay for mobile
-            let overlay = document.querySelector('.overlay');
-            if (!overlay && window.innerWidth <= 768 && sidebar.classList.contains('active')) {
-                overlay = document.createElement('div');
-                overlay.className = 'overlay active';
-                document.body.appendChild(overlay);
-
-                overlay.addEventListener('click', function() {
-                    sidebar.classList.remove('active');
-                    overlay.classList.remove('active');
-                    setTimeout(function() {
-                        overlay.remove();
-                    }, 300);
-                });
-            } else if (overlay) {
-                overlay.classList.remove('active');
-                setTimeout(function() {
-                    overlay.remove();
-                }, 300);
+$(function() { // équivalent de $(document).ready()
+    if ($.fn.DataTable) { // Vérifie que DataTables est chargé
+        $('#myTable').DataTable({
+            responsive: true,
+            processing: true,
+            serverSide: false,
+            language: {
+                url: "/datatables/i18n/fr-FR.json"
             }
         });
+    } else {
+        console.error("DataTables non chargé !");
+    }
+});
+</script>
 
-        // Mobile responsive
-        if (window.innerWidth <= 768) {
-            sidebar.classList.add('collapsed');
-            mainContent.classList.add('expanded');
+<script>
+    const themeContainer = document.getElementById('theme-container');
+    const themeToggle = document.getElementById('theme-toggle');
+    const modeLabel = document.getElementById('mode-label');
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('main-content');
+    const toggleBtn = document.getElementById('toggle-btn');
+    const navbar = document.getElementById('navbar');
+    const desktopToggle = document.getElementById('toggle-sidebar-desktop');
+    const desktopToggleIcon = document.getElementById('toggle-icon-desktop');
+
+    // --- THÈME ---
+    function setTheme(theme) {
+        if (theme === 'dark') {
+            themeContainer.classList.remove('light-mode');
+            themeContainer.classList.add('dark-mode');
+            themeToggle.classList.add('toggled');
+            modeLabel.textContent = 'Mode Sombre';
+        } else {
+            themeContainer.classList.remove('dark-mode');
+            themeContainer.classList.add('light-mode');
+            themeToggle.classList.remove('toggled');
+            modeLabel.textContent = 'Mode Clair';
         }
+        localStorage.setItem('theme', theme);
+    }
 
-        window.addEventListener('resize', function() {
-            if (window.innerWidth <= 768) {
-                sidebar.classList.add('collapsed');
-                mainContent.classList.add('expanded');
-            } else if (window.innerWidth > 768 && window.innerWidth <= 991) {
-                sidebar.classList.add('collapsed');
-                sidebar.classList.remove('active');
-                mainContent.classList.add('expanded');
+    function initTheme() {
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const savedTheme = localStorage.getItem('theme') || (prefersDark ? 'dark' : 'light');
+        setTheme(savedTheme);
+    }
 
-                let overlay = document.querySelector('.overlay');
-                if (overlay) {
-                    overlay.remove();
+    themeToggle.addEventListener('click', () => {
+        const currentTheme = themeContainer.classList.contains('dark-mode') ? 'dark' : 'light';
+        setTheme(currentTheme === 'light' ? 'dark' : 'light');
+    });
+
+    // --- SIDEBAR : LOGIQUE D'ÉTAT PRINCIPAL (Desktop) ---
+    
+    function toggleSidebarDesktop() {
+        // Applique l'état 'collapsed' à la sidebar et l'état 'expanded' au contenu/navbar
+        const isCollapsed = sidebar.classList.toggle('collapsed');
+        mainContent.classList.toggle('expanded', isCollapsed);
+        navbar.classList.toggle('expanded', isCollapsed);
+        desktopToggleIcon.classList.toggle('rotate-180', !isCollapsed);
+        localStorage.setItem('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+    }
+    
+    // --- SIDEBAR : LOGIQUE Mobile ---
+    function toggleSidebarMobile() {
+        const isActive = sidebar.classList.toggle('active');
+        handleOverlay(isActive);
+    }
+    
+    desktopToggle.addEventListener('click', toggleSidebarDesktop);
+    toggleBtn.addEventListener('click', toggleSidebarMobile);
+
+    // Gérer l'overlay (uniquement sur mobile)
+    function handleOverlay(isActive) {
+        let overlay = document.querySelector('.overlay');
+        
+        if (isActive && window.innerWidth <= 767) {
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.className = 'overlay';
+                document.body.appendChild(overlay);
+
+                overlay.addEventListener('click', () => {
+                    toggleSidebarMobile();
+                });
+            }
+            // Utiliser setTimeout pour s'assurer que l'animation est appliquée après l'ajout à la page
+            setTimeout(() => {
+                if (isActive) {
+                    overlay.classList.add('active');
+                } else {
+                    overlay.classList.remove('active');
+                    // Retirer l'overlay après la transition si besoin, mais le garder pour la performance
                 }
+            }, 10); 
+        } else if (overlay) {
+            overlay.classList.remove('active');
+        }
+    }
+    
+    // --- SIDEBAR : LOGIQUE DE REDIMENSIONNEMENT ET INITIALISATION ---
+    function handleResize() {
+        const isDesktop = window.innerWidth >= 768; // Utiliser le breakpoint de Tailwind (md)
+        const isMobile = window.innerWidth < 768;
+
+        if (isMobile) {
+            // Sur mobile, toujours masqué et désactiver l'état desktop
+            sidebar.classList.remove('collapsed');
+            mainContent.classList.remove('expanded');
+            navbar.classList.remove('expanded');
+        } else {
+            // Sur desktop/tablette, restaurer l'état mémorisé
+            const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            
+            if (isCollapsed) {
+                sidebar.classList.add('collapsed');
+                mainContent.classList.add('expanded');
+                navbar.classList.add('expanded');
+                desktopToggleIcon.classList.add('rotate-180');
             } else {
                 sidebar.classList.remove('collapsed');
                 mainContent.classList.remove('expanded');
+                navbar.classList.remove('expanded');
+                desktopToggleIcon.classList.remove('rotate-180');
+            }
+            sidebar.classList.remove('active'); 
+            handleOverlay(false); // S'assurer que l'overlay est retiré si on passe du mode mobile au mode desktop
+        }
+    }
+
+    // --- GESTION DES SOUS-MENUS ---
+    document.querySelectorAll('.dropdown-toggle').forEach(toggle => {
+        toggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            const dropdownId = toggle.getAttribute('data-dropdown');
+            const dropdown = document.getElementById(dropdownId);
+            
+            // Les sous-menus ne fonctionnent pas en mode rétracté
+            if (dropdown && !sidebar.classList.contains('collapsed')) {
+                // Fermer les autres menus ouverts
+                document.querySelectorAll('.nav-dropdown.open').forEach(openDropdown => {
+                    if (openDropdown.id !== dropdownId) {
+                         openDropdown.classList.remove('open');
+                         openDropdown.previousElementSibling.classList.remove('open');
+                    }
+                });
+                
+                // Ouvrir/Fermer le menu actuel
+                dropdown.classList.toggle('open');
+                toggle.classList.toggle('open');
             }
         });
     });
+
+    // --- GESTION DU MENU UTILISATEUR (NAVBAR) ---
+    const userMenuToggle = document.getElementById('user-menu-toggle');
+    const userMenu = document.getElementById('user-menu');
+    
+    userMenuToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        userMenu.classList.toggle('open');
+    });
+    
+    // Fermer le menu utilisateur lorsque l'on clique n'importe où
+    document.addEventListener('click', (e) => {
+        if (userMenu.classList.contains('open') && !userMenu.contains(e.target) && !userMenuToggle.contains(e.target)) {
+            userMenu.classList.remove('open');
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initTheme();
+        handleResize();
+    });
+
+    window.addEventListener('resize', handleResize);
 </script>
+
+@stack('scripts')
+
+@push('scripts')
+{{-- Si vous avez des scripts spécifiques à cette page, placez-les ici --}}
+@endpush
+
+</body>
+</html>

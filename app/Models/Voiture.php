@@ -35,9 +35,9 @@ class Voiture extends Model
 
 
     public function utilisateur()
-      {
-          return $this->belongsToMany(User::class, 'association_user_voitures', 'voiture_id', 'user_id');
-      }
+{
+    return $this->belongsToMany(User::class, 'association_user_voitures', 'voiture_id', 'user_id');
+}
 
 
     public function latestLocation()
