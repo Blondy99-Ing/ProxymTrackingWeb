@@ -281,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Mise à jour de la modale pour l'édition
             modalTitle.textContent = 'Modifier l\'Utilisateur';
             submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i> Mettre à jour';
-            userForm.action = `/users/${user.id}`; // Route d'action de mise à jour (PUT)
+            userForm.action = `{{ url('tracking/users') }}/${user.id}`; // Route d'action de mise à jour (PUT)
             formMethod.value = 'PUT'; // Changement de la méthode pour Laravel
             
             userIdInput.value = user.id;

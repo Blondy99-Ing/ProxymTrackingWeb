@@ -382,6 +382,8 @@
 
     .ui-table tr:hover {
         background-color: var(--color-sidebar-active-bg);
+
+        color: black;
     }
 
     /* Styles des boutons (conservés) */
@@ -542,7 +544,27 @@
         background-color: var(--color-primary);
         color: var(--color-card);
     }
-    </style>
+
+
+
+    .brand{
+            width: 80%;
+            height: 130px;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+    }
+.brand-logo{
+    width: 100%;
+    height: auto;
+    position: absolute;
+    padding-top: 50px;
+
+    padding-bottom: 50px;
+}
+
+
+   </style>
 
     <!-- DataTables CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
@@ -555,11 +577,12 @@
     <div class="sidebar" id="sidebar">
         <!-- Logo et Titre -->
         <div class="brand">
-            <div class="icon">
-                <!-- L'icône de logo utilise la couleur primaire, visible en mode sombre/clair -->
-                <i class="fas fa-map-marker-alt" style="color: var(--color-primary); font-size: 24px;"></i>
+            
+            <div class="brand-logo">
+                <div class="logo-text">
+                    <img src="{{ asset('assets/images/logo_tracking.png') }}" alt="">
+                </div>
             </div>
-            <div class="logo-text">ProxymTracking</div>
         </div>
 
         <!-- Bouton pour Rétracter la sidebar sur Desktop -->
@@ -590,7 +613,7 @@
                             class="{{ request()->is('tracking_users') ? 'active' : '' }}">Utilisateurs</a></li>
                     <li><a href="{{ route('tracking.vehicles') ?? '#' }}"
                             class="{{ request()->is('tracking.vehicles') ? 'active' : '' }}">Véhicules</a></li>
-                    <li><a href="#" class="{{ request()->is('tracking.zones') ? 'active' : '' }}">Zones</a></li>
+                    <li><a href="{{ route('trajets.index') }}" class="{{ request()->is('tracking.zones') ? 'active' : '' }}">Trajets</a></li>
                 </ul>
             </li>
 
@@ -602,7 +625,7 @@
                 </a>
             </li>
             <li>
-                <a href="{{ route('alerts.index') ?? '#' }}"
+                <a href="{{ route('alerts.view') ?? '#' }}"
                     class="{{ request()->routeIs('alerts.index') ? 'active' : '' }}">
                     <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
                     <span class="title">Alertes</span>
@@ -667,8 +690,7 @@
                     id="user-menu-toggle">
                     <img src="https://placehold.co/36x36/F58220/ffffff?text=U" alt="Profile"
                         class="h-9 w-9 rounded-full object-cover border-2 border-primary">
-                    <span class="font-semibold hidden lg:block profile-text" style="color: var(--color-text);">John
-                        Doe</span>
+                    <span class="font-semibold hidden lg:block profile-text" style="color: var(--color-text);">Patrick TATHUM</span>
                 </button>
 
                 <!-- Dropdown Utilisateur -->

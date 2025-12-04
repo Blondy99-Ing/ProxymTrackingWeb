@@ -148,7 +148,7 @@ function getCarIcon(status){
     const color = status==='Alerte'?'red':(status==='En Mouvement'?'green':'yellow');
     return {
         url: '/assets/icons/car_icon_'+color+'.png', // Vérifie que les icônes existent
-        scaledSize: new google.maps.Size(50, 50)
+        scaledSize: new google.maps.Size(75, 75)
     };
 }
 

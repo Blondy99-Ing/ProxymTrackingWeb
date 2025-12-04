@@ -5,55 +5,53 @@ namespace App\Http\Controllers\Alert;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Alert;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class AlertController extends Controller
 {
     protected function typeLabel(?string $type): string
     {
-        if (!$type) {
-            return 'Unknown';
-        }
+        if (!$type) return 'Unknown';
 
         return match($type) {
-            'geofence'      => 'GeoFence Breach',
-            'safe_zone'     => 'Safe Zone',
-            'speed'         => 'Speeding',
-            'engine'        => 'Engine Alert',
-            'unauthorized'  => 'Unauthorized Time',
-            default         => ucfirst(str_replace('_', ' ', $type)),
+            'geofence'     => 'GeoFence Breach',
+            'safe_zone'    => 'Safe Zone',
+            'speed'        => 'Speeding',
+            'engine'       => 'Engine Alert',
+            'unauthorized' => 'Unauthorized Time',
+            default        => ucfirst(str_replace('_', ' ', $type)),
         };
     }
 
     public function index()
     {
         $alerts = Alert::with(['voiture.utilisateur'])
-            ->orderBy('read', 'asc')        // Non lus en premier
-            ->orderBy('alerted_at', 'desc') // Puis tri par date décroissante
+            ->orderBy('processed', 'asc')
+            ->orderBy('alerted_at', 'desc')
             ->get()
             ->map(function (Alert $a) {
                 $voiture = $a->voiture;
                 $users = collect();
 
                 if ($voiture && $voiture->utilisateur) {
-                    $users = $voiture->utilisateur->map(function($u){
-                        return trim(($u->prenom ?? '') . ' ' . ($u->nom ?? ''));
-                    })->filter()->values();
+                    $users = $voiture->utilisateur
+                        ->map(fn($u) => trim(($u->prenom ?? '') . ' ' . ($u->nom ?? '')))
+                        ->filter()
+                        ->values();
                 }
-
-                $type = $a->type ?? null;
-                $typeLabel = $this->typeLabel($type);
 
                 return [
                     'id' => $a->id,
                     'voiture_id' => $a->voiture_id,
-                    'type' => $type,
-                    'type_label' => $typeLabel,
-                    'message' => $a->message ?? null,
-                    'location' => $a->location ?? $a->message ?? null,
+                    'type' => $a->type,
+                    'type_label' => $this->typeLabel($a->type),
+                    'message' => $a->message,
+                    'location' => $a->location ?? $a->message,
                     'read' => (bool) $a->read,
-                    'alerted_at_iso' => $a->alerted_at ? $a->alerted_at->toIso8601String() : null,
-                    'alerted_at_human' => $a->alerted_at ? $a->alerted_at->format('d/m/Y H:i:s') : null,
-                    'created_at' => $a->created_at ? $a->created_at->toIso8601String() : null,
+                    'processed' => (bool) $a->processed,
+                    'processed_by' => $a->processed_by,
+                    'alerted_at_human' => $a->alerted_at ? $a->alerted_at->format('d/m/Y H:i:s') : '-',
                     'voiture' => $voiture ? [
                         'id' => $voiture->id,
                         'immatriculation' => $voiture->immatriculation,
@@ -62,30 +60,50 @@ class AlertController extends Controller
                         'couleur' => $voiture->couleur,
                         'photo' => $voiture->photo,
                     ] : null,
-                    'users' => $users->values()->all(),
                     'users_labels' => $users->isEmpty() ? null : $users->implode(', '),
-                    'user_id' => $voiture && $voiture->utilisateur && $voiture->utilisateur->first() ? $voiture->utilisateur->first()->id : null,
+                    'user_id' => $voiture?->utilisateur?->first()?->id ?? null,
                 ];
             });
 
         return response()->json([
             'status' => 'success',
-            'data' => $alerts
+            'data' => $alerts,
         ]);
     }
 
-    public function markAsRead($id)
+    /**
+     * 🔥 NOUVELLE MÉTHODE POUR LOG LE POLYGON EXACTEMENT REÇU
+     */
+    public function receivePolygon(Request $request)
+    {
+        // On récupère tout le JSON envoyé
+        $polygon = $request->all();
+
+        // LOG EXACT du polygon
+        Log::info('Polygon reçu depuis le frontend : ', $polygon);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Polygon reçu et logué',
+            'polygon_received' => $polygon
+        ]);
+    }
+
+    public function markAsProcessed(Request $request, $id)
     {
         $alert = Alert::findOrFail($id);
-        $alert->read = true;
+
+        $alert->processed = true;
+        $alert->processed_by = Auth::id();
         $alert->save();
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Alerte marquée comme lue',
+            'message' => 'Alerte marquée comme traitée',
             'data' => [
                 'id' => $alert->id,
-                'read' => true
+                'processed' => true,
+                'processed_by' => $alert->processed_by,
             ]
         ]);
     }
