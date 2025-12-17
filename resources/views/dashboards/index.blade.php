@@ -86,71 +86,113 @@
 
 <script>
 let map;
+let markersById = {};          // 🔹 Map des markers par ID véhicule
+let infoWindowsById = {};      // (optionnel) pour gérer les InfoWindows
+let vehiclesData = @json($vehicles); // données initiales du PHP
 
 function initMap() {
-    const vehicles = @json($vehicles);
-
     map = new google.maps.Map(document.getElementById('fleetMap'), {
         center: { lat: 4.0511, lng: 9.7679 },
         zoom: 7
     });
 
+    // Initialisation des markers la première fois
+    renderMarkers(vehiclesData, true);
+
+    // 🔄 Rafraîchit les positions toutes les 10 secondes
+    setInterval(refreshFleet, 10000);
+}
+
+// Rendu / mise à jour des markers
+function renderMarkers(vehicles, fitBounds = false) {
     const bounds = new google.maps.LatLngBounds();
 
     vehicles.forEach(v => {
-        if(v.lat == null || v.lon == null) return; // ignore seulement si pas de coords
+        if (v.lat == null || v.lon == null) return;
 
         const lat = parseFloat(v.lat);
         const lon = parseFloat(v.lon);
+        const position = { lat: lat, lng: lon };
 
-        // Icône par défaut bleu
-        
-        const marker = new google.maps.Marker({
-            position: { lat, lng: lon },
-            map: map,
-            title: v.immatriculation,
-            icon: {
-                url: "/assets/icons/car_icon.png",
-                scaledSize: new google.maps.Size(40, 40)
-            }
-        });
+        let marker = markersById[v.id];
 
-        bounds.extend(marker.getPosition());
+        if (!marker) {
+            // 🟢 Créer un nouveau marker si pas encore existant
+            marker = new google.maps.Marker({
+                position: position,
+                map: map,
+                title: v.immatriculation,
+                icon: {
+                    url: "/assets/icons/car_icon.png",
+                    scaledSize: new google.maps.Size(40, 40)
+                }
+            });
 
-        // InfoWindow avec boutons GPS ON/OFF
-        const infoWindow = new google.maps.InfoWindow({
-            content: `
-                <b>${v.immatriculation}</b><br>
-                Status: ${v.status}<br>
-                <button onclick="toggleGPS(${v.id}, true)" style="background:green;color:white;padding:2px 5px;margin:2px;border:none;border-radius:4px;">ON</button>
-                <button onclick="toggleGPS(${v.id}, false)" style="background:red;color:white;padding:2px 5px;margin:2px;border:none;border-radius:4px;">OFF</button>
-            `
-        });
+            // InfoWindow
+            const infoWindow = new google.maps.InfoWindow({
+                content: `
+                    <b>${v.immatriculation}</b><br>
+                    Status: ${v.status}<br>
+                    <button onclick="toggleGPS(${v.id}, true)" style="background:green;color:white;padding:2px 5px;margin:2px;border:none;border-radius:4px;">ON</button>
+                    <button onclick="toggleGPS(${v.id}, false)" style="background:red;color:white;padding:2px 5px;margin:2px;border:none;border-radius:4px;">OFF</button>
+                `
+            });
 
-        marker.addListener('click', () => infoWindow.open(map, marker));
+            marker.addListener('click', () => infoWindow.open(map, marker));
+
+            markersById[v.id] = marker;
+            infoWindowsById[v.id] = infoWindow;
+        } else {
+            // 🔁 Met à jour la position d'un marker existant
+            marker.setPosition(position);
+        }
+
+        bounds.extend(position);
     });
 
-    if(vehicles.length > 0) {
+    if (fitBounds && vehicles.length > 0) {
         map.fitBounds(bounds);
-
         const listener = google.maps.event.addListener(map, "idle", function() {
-            if(map.getZoom() > 14) map.setZoom(14);
+            if (map.getZoom() > 14) map.setZoom(14);
             google.maps.event.removeListener(listener);
         });
     }
 }
 
-// Fonction toggle GPS (à compléter côté backend)
+// 🔄 Récupère les nouvelles positions depuis l'API Laravel
+function refreshFleet() {
+    fetch("{{ route('fleet.positions') }}", {
+        headers: {
+            'Accept': 'application/json'
+        }
+    })
+        .then(res => res.json())
+        .then(data => {
+            // data = tableau de véhicules [{id, immatriculation, lat, lon, status}, ...]
+            vehiclesData = data; // on met à jour la variable globale si tu veux l'utiliser ailleurs
+            renderMarkers(data, false); // false = ne pas refitBounds à chaque fois
+        })
+        .catch(err => {
+            console.error("Erreur lors de la mise à jour des positions :", err);
+        });
+}
+
+// Fonction toggle GPS (tu pourras l'implémenter côté backend si besoin)
 function toggleGPS(vehicleId, turnOn) {
     fetch(`/vehicles/${vehicleId}/toggle-gps`, {
         method: 'POST',
-        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Content-Type': 'application/json' },
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ on: turnOn })
     }).then(res => {
-        if(res.ok) alert(`Véhicule ${turnOn ? 'activé' : 'désactivé'}`);
+        if (res.ok) alert(`Véhicule ${turnOn ? 'activé' : 'désactivé'}`);
         else alert('Erreur lors du changement du GPS');
     });
 }
 </script>
 @endsection
+
+
 

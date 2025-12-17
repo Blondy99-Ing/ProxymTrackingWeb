@@ -14,6 +14,7 @@ use App\Http\Controllers\TestController;
 use App\Http\Controllers\Users\ProfileController;
 use App\Http\Controllers\Alert\AlertController;
 use App\Http\Controllers\Trajets\TrajetController;
+use App\Http\Controllers\Gps\ControlGpsController;
 
 
 
@@ -88,6 +89,27 @@ Route::post('/alerts/{alert}/mark-as-unread', [AlertController::class, 'markAsUn
 // Vehicles Routes
 Route::get('/vehicles/create', [VehiclesController::class, 'create'])->name('vehicles.create');
 Route::post('/vehicles/store', [VehiclesController::class, 'store'])->name('vehicles.store');
+
+//details d'un vehicule specifique
+Route::get('/voitures/{id}/geofence', [VoitureController::class, 'detailsVehiculeGeofence'])
+    ->name('tracking.vehicles.geofence');
+
+Route::prefix('voitures')->group(function () {
+        Route::get('engine-status/batch', [ControlGpsController::class, 'engineStatusBatch'])
+            ->name('voitures.engineStatusBatch');
+
+        Route::get('{voiture}/engine-status', [ControlGpsController::class, 'engineStatus'])
+            ->name('voitures.engineStatus');
+
+        Route::post('{voiture}/toggle-engine', [ControlGpsController::class, 'toggleEngine'])
+            ->name('voitures.toggleEngine');
+    });
+
+
+    // API JSON pour les positions de la flotte
+Route::get('/api/fleet-positions', [DashboardController::class, 'fleetPositions'])
+    ->name('fleet.positions');
+
 // couper le moteur
 Route::get('/voitures/{id}/engine-status', [VoitureController::class, 'getEngineStatus'])
     ->name('voitures.engineStatus');
@@ -115,8 +137,24 @@ Route::prefix('employes')->name('employes.')->group(function () {
 });
 
 
+
+
+
 Route::get('/users/{id}/profile', [ProfileController::class, 'show'])
     ->name('users.profile');
+
+// Paramètre de vehicule
+// Mettre à jour les paramètres d'alertes (time zone / speed zone) d'un véhicule
+Route::put(
+    '/users/{user}/vehicles/{voiture}/define',
+    [VoitureController::class, 'defineAlertsForUserVehicle']
+)->name('users.vehicle.alerts.define');
+
+ // definition du time zone et du speed zone
+Route::put('vehicles/{voiture}/alerts', [VoitureController::class, 'defineAlertsForVehicle'])
+    ->name('tracking.vehicles.alerts.define');
+
+
 
     // Liste de toutes les alertes (JSON)
 Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
@@ -145,8 +183,6 @@ Route::get('/voitures/{id}/trajets', [TrajetController::class, 'byVoiture'])->na
 
 
 
-
-
 });
 
 
@@ -163,13 +199,6 @@ require __DIR__.'/auth.php';
 
 
 
-Route::prefix('tests')->name('test.')->group(function () {
-    Route::get('/profile', [TestController::class, 'profile'])->name('profile'); 
-    Route::get('/dashboard', [TestController::class, 'dashboard'])->name('dashboard');        
-    Route::get('/alert', [TestController::class, 'alert'])->name('alert');       
-    Route::get('/alertcentre', [TestController::class, 'alertcentre'])->name('alert.centre');  
-   
-});
 
 
 

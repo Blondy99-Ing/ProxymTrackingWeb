@@ -53,15 +53,22 @@
         <h2 class="text-xl font-bold mb-4">Liste Détaillée des Incidents</h2>
 
         <div class="flex flex-wrap gap-4 mb-4 items-center border-b pb-4">
-            <input id="alertSearch" class="ui-input max-w-sm" placeholder="Recherche véhicule / lieu / utilisateur..." />
+            <input id="alertSearch" class="ui-input max-w-sm"
+                placeholder="Recherche véhicule / lieu / utilisateur..." />
             <select id="alertTypeFilter" class="ui-select">
                 <option value="all">Tous les types</option>
                 <option value="geofence">GeoFence</option>
                 <option value="speed">Speed</option>
                 <option value="engine">Engine</option>
                 <option value="safe_zone">Safe Zone</option>
-                <option value="unauthorized">Unauthorized Time</option>
+
+
+                {{-- 🔥 Nouveaux types --}}
+                <option value="time_zone">Time Zone</option>
+                <option value="stolen">Stolen / Vol</option>
+                <option value="low_battery">Low Battery</option>
             </select>
+
             <button id="filterBtn" class="btn-primary"><i class="fas fa-filter mr-1"></i> Filtrer</button>
             <button id="refreshBtn" class="btn-secondary"><i class="fas fa-sync-alt mr-1"></i> Rafraîchir</button>
         </div>
@@ -81,7 +88,9 @@
                     </tr>
                 </thead>
                 <tbody id="alerts-tbody">
-                    <tr><td colspan="8" class="text-center text-secondary py-4">Chargement...</td></tr>
+                    <tr>
+                        <td colspan="8" class="text-center text-secondary py-4">Chargement...</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -91,18 +100,28 @@
 
 @push('scripts')
 <script>
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', function() {
 
     const API_INDEX = "{{ route('alerts.index') }}";
     const API_MARK_PROCESSED = "{{ url('/alerts') }}";
 
     const typeStyle = {
-        geofence:   { color: 'bg-orange-500', icon: 'fas fa-map-marker-alt', label: 'GeoFence' },
-        safe_zone:  { color: 'bg-purple-500',  icon: 'fas fa-shield-alt', label: 'Safe Zone' },
-        speed:      { color: 'bg-blue-500',   icon: 'fas fa-tachometer-alt', label: 'Speeding' },
-        engine:     { color: 'bg-red-500',    icon: 'fas fa-exclamation-triangle', label: 'Engine' },
-        unauthorized:{ color: 'bg-red-600',   icon: 'fas fa-clock', label: 'Unauthorized Time' }
-    };
+    geofence:    { color: 'bg-orange-500', icon: 'fas fa-map-marker-alt',      label: 'GeoFence' },
+    safe_zone:   { color: 'bg-purple-500', icon: 'fas fa-shield-alt',           label: 'Safe Zone' },
+    speed:       { color: 'bg-blue-500',   icon: 'fas fa-tachometer-alt',       label: 'Speeding' },
+    engine:      { color: 'bg-red-500',    icon: 'fas fa-exclamation-triangle', label: 'Engine' },
+    unauthorized:{ color: 'bg-red-600',    icon: 'fas fa-clock',                label: 'Unauthorized Time' },
+
+    // 🟡 Time zone = jaune
+    time_zone:   { color: 'bg-yellow-400', icon: 'fas fa-clock',                label: 'Time Zone' },
+
+    // 🔴 Vol = rouge bien marqué
+    stolen:      { color: 'bg-red-700',    icon: 'fas fa-car-crash',            label: 'Stolen / Vol' },
+
+    // 🔴 Rouge clair pour batterie faible
+    low_battery: { color: 'bg-red-300',    icon: 'fas fa-battery-quarter',      label: 'Low Battery' },
+};
+
 
     let alerts = [];
 
@@ -110,33 +129,42 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             const res = await fetch(API_INDEX);
             const json = await res.json();
-            if(json.status==='success') return json.data;
+            if (json.status === 'success') return json.data;
             return [];
-        } catch (err) { console.error(err); return []; }
+        } catch (err) {
+            console.error(err);
+            return [];
+        }
     }
 
     function renderAlerts(rows) {
         const tbody = document.getElementById('alerts-tbody');
-        tbody.innerHTML='';
+        tbody.innerHTML = '';
 
-        if(!rows.length){
-            tbody.innerHTML='<tr><td colspan="8" class="text-center text-secondary py-6">Aucune alerte trouvée.</td></tr>';
+        if (!rows.length) {
+            tbody.innerHTML =
+                '<tr><td colspan="8" class="text-center text-secondary py-6">Aucune alerte trouvée.</td></tr>';
             updateStats([]);
             return;
         }
 
-        rows.forEach(a=>{
-            const style = typeStyle[a.type] ?? { color:'bg-gray-500', icon:'fas fa-bell', label:a.type ?? 'Unknown' };
+        rows.forEach(a => {
+            const style = typeStyle[a.type] ?? {
+                color: 'bg-gray-500',
+                icon: 'fas fa-bell',
+                label: a.type ?? 'Unknown'
+            };
             const usersLabel = a.users_labels ?? '-';
-            const vehicleLabel = a.voiture ? `${a.voiture.immatriculation} (${a.voiture.marque} ${a.voiture.model})` : 'N/A';
+            const vehicleLabel = a.voiture ?
+                `${a.voiture.immatriculation} (${a.voiture.marque} ${a.voiture.model})` : 'N/A';
             const alertedHuman = a.alerted_at_human ?? '-';
             const statusText = a.processed ? 'Résolue' : 'Ouverte';
             const statusClass = a.processed ? 'text-green-500' : 'text-red-500';
             const processedBy = a.processed_by_name ?? '-';
 
             const row = document.createElement('tr');
-            row.className='hover:bg-gray-50';
-            row.innerHTML=`
+            row.className = 'hover:bg-gray-50';
+            row.innerHTML = `
                 <td><span class="px-3 py-1 rounded-full text-white text-xs font-semibold ${style.color}">
                     <i class="${style.icon} mr-1"></i> ${a.type_label ?? style.label}
                 </span></td>
@@ -160,45 +188,54 @@ document.addEventListener('DOMContentLoaded', function () {
         updateStats(rows);
     }
 
-    function updateStats(data){
-        document.getElementById('stat-open').textContent = data.filter(a=>!a.processed).length;
-        document.getElementById('stat-geofence').textContent = data.filter(a=>a.type==='geofence').length;
-        document.getElementById('stat-speed').textContent = data.filter(a=>a.type==='speed').length;
-        document.getElementById('stat-resolved').textContent = data.filter(a=>a.processed).length;
-        document.getElementById('stat-safezone').textContent = data.filter(a=>a.type==='safe_zone').length;
+    function updateStats(data) {
+        document.getElementById('stat-open').textContent = data.filter(a => !a.processed).length;
+        document.getElementById('stat-geofence').textContent = data.filter(a => a.type === 'geofence').length;
+        document.getElementById('stat-speed').textContent = data.filter(a => a.type === 'speed').length;
+        document.getElementById('stat-resolved').textContent = data.filter(a => a.processed).length;
+        document.getElementById('stat-safezone').textContent = data.filter(a => a.type === 'safe_zone').length;
     }
 
-    function applyFilters(){
+    function applyFilters() {
         const q = (document.getElementById('alertSearch').value || '').toLowerCase().trim();
         const type = document.getElementById('alertTypeFilter').value;
 
         let filtered = alerts.slice();
-        if(type && type!=='all') filtered = filtered.filter(a=>a.type===type);
-        if(q) filtered = filtered.filter(a=>{
-            const vehicle = (a.voiture?.immatriculation ?? '') + ' ' + (a.voiture?.marque ?? '') + ' ' + (a.voiture?.model ?? '');
+        if (type && type !== 'all') filtered = filtered.filter(a => a.type === type);
+        if (q) filtered = filtered.filter(a => {
+            const vehicle = (a.voiture?.immatriculation ?? '') + ' ' + (a.voiture?.marque ?? '') + ' ' +
+                (a.voiture?.model ?? '');
             const users = a.users_labels ?? '';
-            return vehicle.toLowerCase().includes(q) || (a.location ?? '').toLowerCase().includes(q) || users.toLowerCase().includes(q);
+            return vehicle.toLowerCase().includes(q) || (a.location ?? '').toLowerCase().includes(q) ||
+                users.toLowerCase().includes(q);
         });
         renderAlerts(filtered);
     }
 
-    window.markAsProcessed = async function(id){
-        try{
+    window.markAsProcessed = async function(id) {
+        try {
             const res = await fetch(`${API_MARK_PROCESSED}/${id}/processed`, {
-                method:'PATCH',
-                headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'}
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                }
             });
             const json = await res.json();
-            if(json.status==='success'){ await reload(); }
-        } catch(err){ console.error(err); }
+            if (json.status === 'success') {
+                await reload();
+            }
+        } catch (err) {
+            console.error(err);
+        }
     }
 
-    window.goToProfile = function(userId, vehicleId){
-        if(!userId || !vehicleId) return;
+    window.goToProfile = function(userId, vehicleId) {
+        if (!userId || !vehicleId) return;
         window.location.href = `/users/${userId}/profile?vehicle_id=${vehicleId}`;
     }
 
-    async function reload(){
+    async function reload() {
         alerts = await fetchAlertsFromApi();
         applyFilters();
     }
@@ -208,7 +245,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('alertTypeFilter').addEventListener('change', applyFilters);
     document.getElementById('refreshBtn').addEventListener('click', reload);
 
-    (async ()=>{
+    (async () => {
         alerts = await fetchAlertsFromApi();
         renderAlerts(alerts);
     })();

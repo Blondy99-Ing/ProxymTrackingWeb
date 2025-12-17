@@ -69,4 +69,38 @@ class DashboardController extends Controller
             'vehicles'
         ));
     }
+
+
+
+
+
+
+
+
+   
+// possition en temps reels
+public function fleetPositions()
+{
+    // TOUS les véhicules avec position (SEULEMENT si coordonnées valides)
+    $vehicles = Voiture::with('latestLocation')->get()
+        ->filter(function ($v) {
+            return $v->latestLocation && $v->latestLocation->latitude && $v->latestLocation->longitude;
+        })
+        ->map(function ($v) {
+            $lat = floatval($v->latestLocation->latitude);
+            $lon = floatval($v->latestLocation->longitude);
+
+            return [
+                'id'               => $v->id,
+                'immatriculation'  => $v->immatriculation,
+                'lat'              => $lat,
+                'lon'              => $lon,
+                'status'           => 'En mouvement', // ou autre si tu veux
+            ];
+        })
+        ->values(); // pour réindexer proprement
+
+    return response()->json($vehicles);
+}
+
 }

@@ -20,6 +20,7 @@ class Voiture extends Model
         'voiture_unique_id',
         'immatriculation',
         'mac_id_gps',
+        'sim_gps',
         'marque',
         'model',
         'couleur',
@@ -66,6 +67,13 @@ public function trajets()
 {
     return $this->hasMany(\App\Models\Trajet::class, 'vehicle_id');
 }
+
+
+public function commands()
+{
+    return $this->hasMany(Commande::class, 'vehicule_id');
+}
+
 
 
 }

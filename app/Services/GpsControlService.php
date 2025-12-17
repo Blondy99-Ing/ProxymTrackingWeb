@@ -2,264 +2,498 @@
 
 namespace App\Services;
 
+use App\Models\Location;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Service de contrôle GPS pour l'interaction avec l'API 18GPS.
- * 
- * Ce service permet :
- *  - Se connecter à l'API GPS et récupérer un token.
- *  - Envoyer des commandes aux appareils GPS (ex : ouverture/fermeture relais).
- *  - Obtenir le statut temps réel des appareils.
- *  - Normaliser les réponses du fournisseur pour l'application.
+ * 18GPS / 18gps.net - ASMX Open API
+ *
+ * Endpoints:
+ * - {GPS_API_URL}/loginSystem
+ * - {GPS_API_URL}/GetDate (method=SendCommands / GetSendCmdList / ClearCmdList / ...)
+ *
+ * Notes:
+ * - Le token "mds" est obligatoire
+ * - errorCode=403 => token expiré => relancer loginSystem puis retry
+ * - ASMX peut renvoyer du JSON encapsulé dans <string>...</string> ou {"d":"...json..."}
  */
 class GpsControlService
 {
-    // ==============================
-    // Endpoints du fournisseur GPS
-    // ==============================
-    private const GPS_API_URL = "http://apitest.18gps.net/GetDateServices.asmx";
-    private const LOGIN_URL   = self::GPS_API_URL . "/loginSystem";
-    private const COMMAND_URL = self::GPS_API_URL . "/GetDate";
+    // Provider URLs
+    private string $apiBaseUrl;
+    private string $loginUrl;
+    private string $getDateUrl;
 
-    // Identifiants GPS (à mettre en .env pour la production)
-    private string $login;
-    private string $password;
+    // Credentials
+    private string $loginName;
+    private string $loginPassword;
 
-    // Token GPS stocké en mémoire pour réutilisation
-    private ?string $gpsToken = null;
+    // Device command password (souvent requis pour OPENRELAY/CLOSERELAY)
+    private string $deviceCmdPassword;
 
-    /**
-     * Constructeur : récupère les identifiants depuis le fichier .env
-     */
+    // Login params
+    private string $loginType;
+    private string $language;
+    private string $timeZone; // parfois "8" ou "+08"
+    private string $apply;
+    private int $isMd5;
+    private string $providerLoginUrl;
+
+    // HTTP/Cache
+    private int $httpTimeoutSeconds;
+    private string $tokenCacheKey = 'gps18gps:mds_token';
+    private int $tokenTtlSeconds;
+
+    // Status decoding (locations.status)
+    private int $accBitIndex;
+    private int $relayBitIndex;
+    private bool $relayInvert;   // si ton bit est inversé (selon câblage)
+    private string $bitOrder;    // MSB (gauche->droite) ou LSB (droite->gauche)
+
     public function __construct()
     {
-        $this->login    = env("GPS_LOGIN", "Proxym_tracking");
-        $this->password = env("GPS_PASSWORD", "proxym123");
+        $this->apiBaseUrl = rtrim((string) env('GPS_API_URL', 'http://apitest.18gps.net/GetDateServices.asmx'), '/');
+        $this->loginUrl   = $this->apiBaseUrl . '/loginSystem';
+        $this->getDateUrl = $this->apiBaseUrl . '/GetDate';
+
+        $this->loginName     = (string) env('GPS_LOGIN_NAME', '');
+        $this->loginPassword = (string) env('GPS_LOGIN_PASSWORD', '');
+
+        // Si pas défini, on reprend le même mot de passe que le login (souvent le cas chez vous)
+        $this->deviceCmdPassword = (string) env('GPS_DEVICE_CMD_PASSWORD', $this->loginPassword);
+
+        $this->loginType        = (string) env('GPS_LOGIN_TYPE', 'ENTERPRISE');
+        $this->language         = (string) env('GPS_LANGUAGE', 'en');
+        $this->timeZone         = (string) env('GPS_TIMEZONE', '8');
+        $this->apply            = (string) env('GPS_APPLY', 'APP');
+        $this->isMd5            = (int) env('GPS_IS_MD5', 0);
+        $this->providerLoginUrl = (string) env('GPS_LOGIN_URL', 'http://appzzl.18gps.net/');
+
+        $this->tokenTtlSeconds    = (int) env('GPS_TOKEN_TTL', 1140);
+        $this->httpTimeoutSeconds = (int) env('GPS_HTTP_TIMEOUT', 20);
+
+        // Décodage statut (par défaut: comme ton code Node)
+        $this->accBitIndex   = (int) env('GPS_STATUS_ACC_INDEX', 0);   // bit 0 = ACC
+        $this->relayBitIndex = (int) env('GPS_STATUS_RELAY_INDEX', 2); // bit 2 = Oil/Relay
+        $this->relayInvert   = (bool) env('GPS_STATUS_RELAY_INVERT', false);
+        $this->bitOrder      = strtoupper((string) env('GPS_STATUS_BIT_ORDER', 'MSB')); // MSB recommandé
     }
 
-    // ==============================
-    // Méthodes utilitaires (helpers)
-    // ==============================
+    /* =========================================================
+     * Helpers
+     * ========================================================= */
 
-    /**
-     * Retourne la date/heure ISO actuelle.
-     */
     private function nowIso(): string
     {
-        return now()->toISOString();
+        try { return now()->toISOString(); } catch (\Throwable) { return ''; }
     }
 
     /**
-     * Convertit une valeur en booléen.
-     * Accepte : bool, string ("1", "true", "yes") ou int (0/1)
+     * ASMX peut renvoyer:
+     * - JSON direct
+     * - JSON dans <string>...</string>
+     * - JSON dans {"d":"{...json...}"}
+     * - ou texte/xml contenant du json
      */
-    private function toBool($v): ?bool
+    private function decodeAsmxJson(string $body): ?array
     {
-        if (is_bool($v)) return $v;
-        if (is_numeric($v)) return $v != 0;
-        if (is_string($v)) {
-            return in_array(strtolower($v), ["1", "true", "yes", "on"]);
+        $body = trim($body);
+
+        // 1) JSON direct
+        $json = json_decode($body, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+            if (isset($json['d']) && is_string($json['d'])) {
+                $inner = trim($json['d']);
+                $j2 = json_decode($inner, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($j2)) return $j2;
+            }
+            return $json;
         }
+
+        // 2) JSON dans <string>...</string>
+        if (preg_match('/<string[^>]*>(.*?)<\/string>/s', $body, $m)) {
+            $inner = html_entity_decode($m[1], ENT_QUOTES | ENT_XML1, 'UTF-8');
+            $inner = trim($inner);
+
+            $json = json_decode($inner, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($json)) return $json;
+        }
+
+        // 3) fallback: strip tags puis JSON decode
+        $stripped = html_entity_decode(strip_tags($body), ENT_QUOTES | ENT_XML1, 'UTF-8');
+        $stripped = trim($stripped);
+
+        $json = json_decode($stripped, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($json)) return $json;
+
         return null;
     }
 
     /**
-     * Analyse une chaîne de bits pour obtenir l'état ACC et huile.
-     * Exemple : "10100000" => ['accState'=>true, 'oilState'=>true]
+     * “Succès” provider : success=true/"true" + errorCode=200/0/""
      */
-    private function parseStatusBits(?string $status): array
+    private function isProviderSuccess(array $data): bool
     {
-        if (!$status || strlen($status) < 3) return [];
-        return [
-            'accState' => $status[0] === "1",
-            'oilState' => $status[2] === "1",
-        ];
+        $success   = $data['success'] ?? null;
+        $errorCode = (string) ($data['errorCode'] ?? ($data['code'] ?? ''));
+
+        return ($success === true || $success === 'true')
+            && ($errorCode === '' || $errorCode === '200' || $errorCode === '0');
     }
 
     /**
-     * Normalise la réponse du fournisseur pour l'application.
-     * Retourne un tableau avec :
-     *  - success : bool
-     *  - gps_status : "Connected"/"Disconnected"/...
-     *  - speed : vitesse
-     *  - status : bitfield brut
-     *  - oilState, accState : états booléens
-     *  - raw : payload original pour debug
+     * GET wrapper robuste (ASMX)
      */
-    private function normalizeStatusResponse($body): array
+    private function getWithParams(string $url, array $params): array
     {
-        if (!$body) {
-            return ['success' => false, 'message' => "Empty response"];
-        }
-
-        $data = $body['data'] ?? $body;
-
-        // Détection succès
-        $success =
-            ($body['success'] ?? null) === true ||
-            ($body['success'] ?? null) === "true" ||
-            ($body['code']    ?? null) === 0 ||
-            ($data['success'] ?? null) === true;
-
-        // Champs GPS
-        $gpsStatus = $data['gps_status'] ?? $data['gpsStatus'] ?? $body['gps_status'] ?? "Unknown";
-        $speed     = $data['speed'] ?? $data['gps_speed'] ?? $body['speed'] ?? 0;
-        $statusField = $data['status'] ?? $data['powerStatus'] ?? $body['status'] ?? null;
-
-        // États explicites
-        $oilState = $this->toBool($data['oilState'] ?? $body['oilState'] ?? null);
-        $accState = $this->toBool($data['accState'] ?? $body['accState'] ?? null);
-
-        $normalized = [
-            'success'    => $success,
-            'gps_status' => $gpsStatus,
-            'speed'      => (float)$speed,
-            'status'     => $statusField,
-            'oilState'   => $oilState,
-            'accState'   => $accState,
-            'raw'        => $data,
-        ];
-
-        // Si pas d'états explicites mais bitfield disponible
-        if ($statusField && ($oilState === null || $accState === null)) {
-            $bits = $this->parseStatusBits($statusField);
-            $normalized['oilState'] ??= $bits['oilState'] ?? null;
-            $normalized['accState'] ??= $bits['accState'] ?? null;
-        }
-
-        // Normalisation gps_status simple
-        if ($normalized['gps_status'] === "1") $normalized['gps_status'] = "Connected";
-        if ($normalized['gps_status'] === "0") $normalized['gps_status'] = "Disconnected";
-
-        return $normalized;
-    }
-
-    /**
-     * Envoi d'une requête GET avec Laravel HTTP client
-     */
-    private function httpGet(string $url, array $params)
-    {
-        return Http::timeout(15)->get($url, $params)->json();
-    }
-
-    // ==============================
-    // API publique
-    // ==============================
-
-    /**
-     * Login sur l'API GPS et récupération du token.
-     * Le token est mis en cache en mémoire pour réutilisation.
-     * Retourne : string|null
-     */
-    public function loginGps(): ?string
-    {
-        if ($this->gpsToken) {
-            Log::info("🔑 Token GPS existant utilisé", [$this->gpsToken]);
-            return $this->gpsToken;
-        }
-
-        $params = [
-            "LoginName"     => $this->login,
-            "LoginPassword" => $this->password,
-            "LoginType"     => "ENTERPRISE",
-            "language"      => "en",
-            "timeZone"      => 8,
-            "apply"         => "APP",
-            "ISMD5"         => 0,
-            "loginUrl"      => "http://appzzl.18gps.net/",
-        ];
-
         try {
-            Log::info("🔑 Connexion à l'API GPS...");
-            $data = $this->httpGet(self::LOGIN_URL, $params);
-            Log::info("📡 Réponse login GPS", $data);
+            $res  = Http::timeout($this->httpTimeoutSeconds)->get($url, $params);
+            $body = $res->body();
 
-            if (($data['success'] ?? null) == "true" && isset($data['mds'])) {
-                $this->gpsToken = $data['mds'];
-                Log::info("✅ Login GPS réussi", ['token' => $this->gpsToken]);
-                return $this->gpsToken;
+            if (!$res->successful()) {
+                Log::warning('[GPS] HTTP non OK', [
+                    'url' => $url,
+                    'status' => $res->status(),
+                    'body' => $body,
+                ]);
+
+                return [
+                    'success' => 'false',
+                    'errorCode' => (string) $res->status(),
+                    'errorDescribe' => 'HTTP error',
+                    'raw' => $body,
+                ];
             }
 
-            Log::error("❌ Échec login GPS", $data);
-            return null;
+            $json = $res->json();
+            if (is_array($json)) {
+                if (isset($json['d']) && is_string($json['d'])) {
+                    $inner = json_decode($json['d'], true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($inner)) return $inner;
+                }
+                return $json;
+            }
 
-        } catch (\Exception $e) {
-            Log::error("🔥 Erreur login GPS", ['error' => $e->getMessage()]);
-            return null;
+            $decoded = $this->decodeAsmxJson($body);
+            if (is_array($decoded)) return $decoded;
+
+            return [
+                'success' => 'false',
+                'errorCode' => '500',
+                'errorDescribe' => 'Réponse non décodable (ASMX)',
+                'raw' => $body,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('[GPS] Exception HTTP', [
+                'url' => $url,
+                'params' => $params,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => 'false',
+                'errorCode' => '500',
+                'errorDescribe' => 'Exception HTTP: ' . $e->getMessage(),
+            ];
         }
     }
 
     /**
-     * Envoi d'une commande à un appareil GPS (ex : OPENRELAY / CLOSERELAY)
+     * Appel générique GetDate?method=XXX avec gestion token + retry 403.
      */
-    public function sendGpsCommand(string $macId, string $command, string $param = "", string $pwd = "proxym123"): ?array
+    private function callGetDate(string $method, array $params, bool $retryOn403 = true): array
     {
-        $token = $this->loginGps();
-        if (!$token) return null;
-
-        $params = [
-            "method"  => "SendCommands",
-            "macid"   => $macId,
-            "cmd"     => $command,
-            "param"   => $param,
-            "pwd"     => $pwd,
-            "sendTime"=> $this->nowIso(),
-            "mds"     => $token,
-        ];
-
-        try {
-            Log::info("📡 Envoi commande GPS", ['cmd' => $command, 'macid' => $macId]);
-            $data = $this->httpGet(self::COMMAND_URL, $params);
-            Log::info("✅ Réponse commande GPS", $data);
-            return $data;
-        } catch (\Exception $e) {
-            Log::error("🔥 Erreur commande GPS", ['error' => $e->getMessage()]);
-            return null;
+        $token = $this->loginGps(false);
+        if (!$token) {
+            return [
+                'success' => 'false',
+                'errorCode' => '401',
+                'errorDescribe' => 'Token (mds) indisponible (login échoué)',
+                'data' => [],
+            ];
         }
-    }
 
-    /**
-     * Récupération du statut temps réel d'un appareil GPS
-     */
-    public function getRealtimeStatusByMac(string $macId): array
-    {
-        $token = $this->loginGps();
-        if (!$token)
-            return ['success' => false, 'message' => 'Token manquant'];
+        $payload = array_merge($params, [
+            'method' => $method,
+            'mds'    => $token,
+        ]);
 
-        $common = ["macid" => $macId, "mds" => $token];
-        $methods = ["GetDeviceStatus", "GetNowData", "GetBitStatus"];
-        $lastErr = null;
+        $data = $this->getWithParams($this->getDateUrl, $payload);
 
-        foreach ($methods as $method) {
-            try {
-                Log::info("🔎 Récupération statut GPS", ['method' => $method, 'mac' => $macId]);
-                $data = $this->httpGet(self::COMMAND_URL, array_merge($common, ["method" => $method]));
-
-                $normalized = $this->normalizeStatusResponse($data);
-
-                if ($normalized['success']) return $normalized;
-
-                $lastErr = $normalized['message'] ?? "Échec fournisseur";
-
-            } catch (\Exception $e) {
-                $lastErr = $e->getMessage();
+        // Token expiré -> refresh + retry 1 fois
+        if ($retryOn403 && (string)($data['errorCode'] ?? '') === '403') {
+            $this->resetGpsToken();
+            $token2 = $this->loginGps(true);
+            if ($token2) {
+                $payload['mds'] = $token2;
+                $data = $this->getWithParams($this->getDateUrl, $payload);
             }
         }
 
-        return [
-            "success" => false,
-            "message" => $lastErr ?? "Toutes les méthodes ont échoué",
-        ];
+        return $data;
     }
 
-    /**
-     * Réinitialisation du token GPS en mémoire
-     */
+    /* =========================================================
+     * 1) LOGIN (mds)
+     * ========================================================= */
+
+    public function loginGps(bool $forceRefresh = false): ?string
+    {
+        if (!$forceRefresh) {
+            $cached = Cache::get($this->tokenCacheKey);
+            if (!empty($cached)) return (string) $cached;
+        }
+
+        if ($this->loginName === '' || $this->loginPassword === '') {
+            Log::error('[GPS] Identifiants manquants: GPS_LOGIN_NAME / GPS_LOGIN_PASSWORD');
+            return null;
+        }
+
+        $params = [
+            'LoginName'     => $this->loginName,
+            'LoginPassword' => $this->loginPassword,
+            'LoginType'     => $this->loginType,
+            'language'      => $this->language,
+            'timeZone'      => $this->timeZone,
+            'apply'         => $this->apply,
+            'ISMD5'         => $this->isMd5,
+            'loginUrl'      => $this->providerLoginUrl,
+        ];
+
+        $data  = $this->getWithParams($this->loginUrl, $params);
+        $token = $data['mds'] ?? null;
+
+        if ($this->isProviderSuccess($data) && !empty($token)) {
+            Cache::put($this->tokenCacheKey, (string) $token, now()->addSeconds($this->tokenTtlSeconds));
+            return (string) $token;
+        }
+
+        Log::warning('[GPS] Login échoué', [
+            'errorCode' => $data['errorCode'] ?? null,
+            'errorDescribe' => $data['errorDescribe'] ?? ($data['msg'] ?? null),
+            'raw' => $data['raw'] ?? $data,
+        ]);
+
+        return null;
+    }
+
     public function resetGpsToken(): void
     {
-        $this->gpsToken = null;
+        Cache::forget($this->tokenCacheKey);
+    }
+
+    /* =========================================================
+     * 2) SEND COMMANDS (2 paramètres)
+     * ========================================================= */
+
+    /**
+     * ✅ EXACTEMENT 2 PARAMÈTRES (macId, command)
+     */
+    public function sendCommand(string $macId, string $command): array
+    {
+        return $this->sendCommandRaw($macId, $command, '');
+    }
+
+    /**
+     * Pour les commandes qui exigent un paramètre (ex: PASSTHROUGH)
+     */
+    public function sendCommandWithParam(string $macId, string $command, string $param): array
+    {
+        return $this->sendCommandRaw($macId, $command, $param);
+    }
+
+    private function sendCommandRaw(string $macId, string $command, string $param = ''): array
+    {
+        $macId   = trim($macId);
+        $command = strtoupper(trim($command));
+
+        $payload = [
+            'macid'    => $macId,
+            'cmd'      => $command,
+            'param'    => $param,
+            'pwd'      => $this->deviceCmdPassword, // IMPORTANT pour OPEN/CLOSE relay
+            'sendTime' => $this->nowIso(),
+        ];
+
+        return $this->callGetDate('SendCommands', $payload, true);
+    }
+
+    // Wrappers pratiques (facultatifs)
+    public function openRelay(string $macId): array { return $this->sendCommand($macId, 'OPENRELAY'); }
+    public function closeRelay(string $macId): array { return $this->sendCommand($macId, 'CLOSERELAY'); }
+
+    // Compatibilité avec ton ancien test tinker
+    public function cutEngine(string $macId): array { return $this->closeRelay($macId); }
+    public function restoreEngine(string $macId): array { return $this->openRelay($macId); }
+
+    public function safeOn(string $macId): array { return $this->sendCommand($macId, 'SAFEON'); }
+    public function safeOff(string $macId): array { return $this->sendCommand($macId, 'SAFEOFF'); }
+
+    public function cutOffPetrol(string $macId): array { return $this->sendCommand($macId, 'CUTOFFPETROL'); }
+    public function resumePetrol(string $macId): array { return $this->sendCommand($macId, 'RESUMEPETROL'); }
+
+    public function passThroughAscii(string $macId, string $asciiPayload): array
+    {
+        return $this->sendCommandWithParam($macId, 'PASSTHROUGH', '0,' . $asciiPayload);
+    }
+
+    public function passThroughHex(string $macId, string $hexPayload): array
+    {
+        return $this->sendCommandWithParam($macId, 'PASSTHROUGH', '1,' . $hexPayload);
+    }
+
+    /* =========================================================
+     * 3) Command history (GetSendCmdList) + Clear (ClearCmdList)
+     * ========================================================= */
+
+    public function getSendCmdList(
+        string $macId,
+        ?string $cmdNo = null,
+        ?string $startTime = null,
+        ?string $endTime = null
+    ): array {
+        $payload = [
+            'macid' => trim($macId),
+            'cmdNo' => $cmdNo ? trim($cmdNo) : '',
+            'startTime' => $startTime ? trim($startTime) : '',
+            'endTime' => $endTime ? trim($endTime) : '',
+        ];
+
+        return $this->callGetDate('GetSendCmdList', $payload, true);
+    }
+
+    public function clearCmdList(string $macId): array
+    {
+        return $this->callGetDate('ClearCmdList', ['macid' => trim($macId)], true);
+    }
+
+    /* =========================================================
+     * 4) STATUT MOTEUR depuis la DB (locations.status)
+     * ========================================================= */
+
+    /**
+     * Convertit un statut en "bit-string" exploitable.
+     * - si c'est déjà du binaire ("10100000") => ok
+     * - si c'est un entier => convertit en binaire (pad)
+     * - si c'est du hex "0x1F" => convertit en binaire
+     */
+    private function normalizeStatusToBits(?string $status): ?string
+    {
+        if ($status === null) return null;
+        $s = trim($status);
+        if ($s === '') return null;
+
+        // déjà binaire
+        if (preg_match('/^[01]{3,}$/', $s)) return $s;
+
+        // hex
+        if (preg_match('/^0x[0-9a-f]+$/i', $s)) {
+            $n = hexdec(substr($s, 2));
+            return str_pad(decbin($n), 16, '0', STR_PAD_LEFT);
+        }
+
+        // entier décimal
+        if (preg_match('/^\d+$/', $s)) {
+            $n = (int) $s;
+            return str_pad(decbin($n), 16, '0', STR_PAD_LEFT);
+        }
+
+        return null;
+    }
+
+    /**
+     * Lit un bit à un index selon l'ordre choisi.
+     * - MSB: index 0 = 1er caractère (gauche->droite)  ✅ comme ton code Node
+     * - LSB: index 0 = dernier caractère (droite->gauche)
+     */
+    private function getBit(?string $bits, int $index): ?bool
+    {
+        if (!$bits || $index < 0) return null;
+
+        $len = strlen($bits);
+        if ($len === 0) return null;
+
+        if ($this->bitOrder === 'LSB') {
+            $pos = $len - 1 - $index;
+        } else {
+            $pos = $index; // MSB
+        }
+
+        if ($pos < 0 || $pos >= $len) return null;
+
+        return $bits[$pos] === '1';
+    }
+
+    /**
+     * Décode le status (colonne locations.status) et renvoie l'état moteur.
+     * Par défaut:
+     * - bit 0 => ACC
+     * - bit 2 => Relay/Oil
+     */
+    public function decodeEngineStatus(?string $status): array
+    {
+        $bits = $this->normalizeStatusToBits($status);
+
+        $acc = $this->getBit($bits, $this->accBitIndex);
+        $relay = $this->getBit($bits, $this->relayBitIndex);
+
+        if ($relay !== null && $this->relayInvert) {
+            $relay = !$relay;
+        }
+
+        // Interprétation “métier” (simple et utile)
+        // - relay=false => moteur coupé (immobilizer actif)
+        // - relay=true + acc=true => moteur ON
+        // - relay=true + acc=false => contact OFF mais autorisation OK
+        $engineState = 'UNKNOWN';
+        if ($relay === false) $engineState = 'CUT';
+        elseif ($relay === true && $acc === true) $engineState = 'ON';
+        elseif ($relay === true && $acc === false) $engineState = 'OFF';
+
+        return [
+            'status_raw'   => $status,
+            'status_bits'  => $bits,
+            'accState'     => $acc,
+            'relayState'   => $relay,      // oil/relay (après inversion éventuelle)
+            'engineState'  => $engineState // ON | OFF | CUT | UNKNOWN
+        ];
+    }
+
+    /**
+     * Récupère le dernier enregistrement Location pour un mac_id_gps,
+     * puis décode l'état moteur depuis la colonne status.
+     */
+    public function getEngineStatusFromLastLocation(string $macId): array
+    {
+        $loc = Location::query()
+            ->where('mac_id_gps', $macId)
+            ->orderByDesc('datetime')
+            ->first();
+
+        if (!$loc) {
+            return [
+                'success' => false,
+                'message' => 'Aucune location trouvée pour ce mac_id_gps',
+            ];
+        }
+
+        $decoded = $this->decodeEngineStatus($loc->status);
+
+        return [
+            'success' => true,
+            'mac_id_gps' => $macId,
+            'datetime' => (string) $loc->datetime,
+            'speed' => (float) ($loc->speed ?? 0),
+            'decoded' => $decoded,
+            'location' => [
+                'longitude' => (float) $loc->longitude,
+                'latitude' => (float) $loc->latitude,
+                'direction' => $loc->direction,
+                'sys_time' => $loc->sys_time,
+                'heart_time' => $loc->heart_time,
+            ],
+        ];
     }
 }

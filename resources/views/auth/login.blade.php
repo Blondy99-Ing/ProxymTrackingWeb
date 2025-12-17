@@ -78,19 +78,38 @@
         <!-- Formulaire -->
         <form method="POST" action="{{ route('login') }}">
             @csrf
+
+            {{-- Champ email ou téléphone --}}
             <div>
-                <label for="email" class="block text-sm font-medium font-orbitron">Email</label>
-                <input type="email" id="email" name="email" value="{{ old('email') }}" required autofocus
-                       class="mt-1 block w-full px-4 py-2 border rounded-lg input-style"
-                       placeholder="votre.email@agence.com">
+                <label for="login" class="block text-sm font-medium font-orbitron">
+                    Email ou Téléphone
+                </label>
+                <input
+                    type="text"
+                    id="login"
+                    name="login"
+                    value="{{ old('login') }}"
+                    required
+                    autofocus
+                    class="mt-1 block w-full px-4 py-2 border rounded-lg input-style"
+                    placeholder="votre.email@agence.com ou 699000000"
+                >
+                @error('login')
+                    <span class="text-xs text-red-500">{{ $message }}</span>
+                @enderror
             </div>
-            <div>
+
+            <div class="mt-4">
                 <label for="password" class="block text-sm font-medium font-orbitron">Mot de passe</label>
                 <input type="password" id="password" name="password" required
                        class="mt-1 block w-full px-4 py-2 border rounded-lg input-style"
                        placeholder="••••••••">
+                @error('password')
+                    <span class="text-xs text-red-500">{{ $message }}</span>
+                @enderror
             </div>
-            <div class="block">
+
+            <div class="block mt-4">
                 <label for="remember_me" class="inline-flex items-center">
                     <input id="remember_me" type="checkbox" name="remember" class="rounded border-gray-300 text-primary shadow-sm focus:ring-primary h-4 w-4">
                     <span class="ms-2 text-sm text-secondary">Se souvenir de moi</span>
@@ -115,11 +134,22 @@ const themeContainer = document.getElementById('theme-container');
 const themeToggle = document.getElementById('theme-toggle');
 const modeLabel = document.getElementById('mode-label');
 function setTheme(theme){
-    if(theme==='dark'){themeContainer.classList.remove('light-mode');themeContainer.classList.add('dark-mode');themeToggle.classList.add('toggled');modeLabel.textContent='Mode Sombre';}
-    else{themeContainer.classList.remove('dark-mode');themeContainer.classList.add('light-mode');themeToggle.classList.remove('toggled');modeLabel.textContent='Mode Clair';}
+    if(theme==='dark'){
+        themeContainer.classList.remove('light-mode');
+        themeContainer.classList.add('dark-mode');
+        themeToggle.classList.add('toggled');
+        modeLabel.textContent='Mode Sombre';
+    } else {
+        themeContainer.classList.remove('dark-mode');
+        themeContainer.classList.add('light-mode');
+        themeToggle.classList.remove('toggled');
+        modeLabel.textContent='Mode Clair';
+    }
     localStorage.setItem('theme',theme);
 }
-themeToggle.addEventListener('click',()=>{setTheme(themeContainer.classList.contains('dark-mode')?'light':'dark');});
+themeToggle.addEventListener('click',()=>{
+    setTheme(themeContainer.classList.contains('dark-mode')?'light':'dark');
+});
 document.addEventListener('DOMContentLoaded',()=>setTheme(localStorage.getItem('theme')||'light'));
 </script>
 </body>
