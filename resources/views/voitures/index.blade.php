@@ -237,19 +237,25 @@
                             </a>
 
                             {{-- ➕ Paramètres d’alertes (TimeZone / SpeedZone) --}}
-                            <button type="button" class="text-secondary hover:text-yellow-500 transition-colors p-2"
-                                title="Paramètres d’alertes" onclick="openVehicleAlertModal(
-                                            {{ $voiture->id }},
-                                            '{{ addslashes($voiture->immatriculation.' - '.$voiture->marque.' '.$voiture->model) }}'
-                                        )">
-                                <i class="fas fa-sliders-h"></i>
-                            </button>
+                            <button type="button"
+  class="text-secondary hover:text-yellow-500 transition-colors p-2"
+  title="Paramètres d’alertes"
+  onclick="openVehicleAlertModal(
+      {{ $voiture->id }},
+      '{{ addslashes($voiture->immatriculation.' - '.$voiture->marque.' '.$voiture->model) }}',
+      '{{ $voiture->time_zone_start ?? '' }}',
+      '{{ $voiture->time_zone_end ?? '' }}',
+      '{{ $voiture->speed_zone ?? '' }}'
+  )">
+  <i class="fas fa-sliders-h"></i>
+</button>
+
                         </td>
 
                         <td class="whitespace-nowrap">
                             <div class="flex items-center gap-3">
                                 <button class="engine-switch" data-id="{{ $voiture->id }}"
-                                    data-toggle-url="{{ route('voitures.toggleEngine', $voiture->id) }}"
+                                    data-toggle-url="{{ route('voitures.toggleEngine', $voiture->id, false) }}"
                                     aria-label="Toggle moteur">
                                     <span class="engine-knob"></span>
                                 </button>
@@ -425,113 +431,199 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-    const switches = Array.from(document.querySelectorAll('.engine-switch'));
-    const ids = switches.map(b => b.dataset.id);
+  const switches = Array.from(document.querySelectorAll('.engine-switch'));
+  const ids = switches.map(b => b.dataset.id).filter(Boolean);
 
-    const setUI = (id, payload) => {
-        const btn = document.querySelector(`.engine-switch[data-id="${id}"]`);
-        const engineBadge = document.getElementById(`engineBadge-${id}`);
-        const gpsBadge = document.getElementById(`gpsBadge-${id}`);
-        if (!btn || !engineBadge || !gpsBadge) return;
+  const setUI = (id, payload) => {
+    const btn = document.querySelector(`.engine-switch[data-id="${id}"]`);
+    const engineBadge = document.getElementById(`engineBadge-${id}`);
+    const gpsBadge = document.getElementById(`gpsBadge-${id}`);
+    if (!btn || !engineBadge || !gpsBadge) return;
 
-        if (!payload || payload.success === false) {
-            btn.classList.remove('is-on', 'is-cut');
-            engineBadge.textContent = 'UNKNOWN';
-            engineBadge.className = 'engine-badge';
-            gpsBadge.textContent = 'GPS: N/A';
-            gpsBadge.className = 'gps-badge off';
-            return;
+    if (!payload || payload.success === false) {
+      btn.classList.remove('is-on', 'is-cut');
+      engineBadge.textContent = 'UNKNOWN';
+      engineBadge.className = 'engine-badge';
+      gpsBadge.textContent = 'GPS: N/A';
+      gpsBadge.className = 'gps-badge off';
+      return;
+    }
+
+    const cut = !!payload.engine?.cut;
+    const online = payload.gps?.online;
+
+    btn.dataset.cut = cut ? '1' : '0';
+    btn.classList.toggle('is-cut', cut);
+    btn.classList.toggle('is-on', !cut);
+
+    engineBadge.textContent = cut ? 'COUPÉ' : 'ACTIF';
+    engineBadge.className = 'engine-badge ' + (cut ? 'cut' : 'on');
+
+    let gpsTxt = 'GPS: N/A';
+    if (online === true) gpsTxt = 'GPS: ONLINE';
+    if (online === false) gpsTxt = 'GPS: OFFLINE';
+    gpsBadge.textContent = gpsTxt;
+    gpsBadge.className = 'gps-badge ' + (online === true ? '' : 'off');
+
+    btn.title = cut ? 'Rétablir le moteur' : 'Couper le moteur';
+  };
+
+  // Batch load
+  const batchUrl = @json(route('voitures.engineStatusBatch', [], false));
+
+  fetch(`${batchUrl}?ids=${encodeURIComponent(ids.join(','))}`, {
+    cache: 'no-cache',
+    credentials: 'same-origin',
+    headers: {
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+  .then(async r => {
+    const json = await r.json().catch(() => null);
+    if (!r.ok || !json) throw new Error('batch failed');
+    return json;
+  })
+  .then(json => {
+    ids.forEach(id => setUI(id, json.data?.[id] ?? { success:false }));
+  })
+  .catch(() => ids.forEach(id => setUI(id, { success:false })));
+
+  // Toggle
+  switches.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const url = btn.dataset.toggleUrl;
+
+      btn.classList.add('is-loading');
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'X-CSRF-TOKEN': csrf,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({})
+        });
+
+        if (res.status === 419) {
+          alert("Session expirée (CSRF). Recharge la page.");
+          window.location.reload();
+          return;
         }
 
-        const cut = !!payload.engine?.cut;
-        const online = payload.gps?.online;
+        const data = await res.json().catch(() => ({ success:false }));
 
-        btn.dataset.cut = cut ? '1' : '0';
-        btn.classList.toggle('is-cut', cut);
-        btn.classList.toggle('is-on', !cut);
+        if (!res.ok || !data.success) {
+          alert(data.message || "Échec commande moteur");
+          return;
+        }
 
-        engineBadge.textContent = cut ? 'COUPÉ' : 'ACTIF';
-        engineBadge.className = 'engine-badge ' + (cut ? 'cut' : 'on');
-
-        let gpsTxt = 'GPS: N/A';
-        if (online === true) gpsTxt = 'GPS: ONLINE';
-        if (online === false) gpsTxt = 'GPS: OFFLINE';
-        gpsBadge.textContent = gpsTxt;
-        gpsBadge.className = 'gps-badge ' + (online === true ? '' : 'off');
-
-        btn.title = cut ? 'Rétablir le moteur' : 'Couper le moteur';
-    };
-
-    // ✅ Batch load
-    fetch(`{{ route('voitures.engineStatusBatch') }}?ids=${ids.join(',')}`, {
-            cache: 'no-cache'
-        })
-        .then(r => r.json())
-        .then(json => {
-            if (!json.success) {
-                ids.forEach(id => setUI(id, {
-                    success: false
-                }));
-                return;
-            }
-            ids.forEach(id => setUI(id, json.data?. [id] || {
-                success: false
-            }));
-        })
-        .catch(() => ids.forEach(id => setUI(id, {
-            success: false
-        })));
-
-    // ✅ Toggle per vehicle
-    switches.forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const id = btn.dataset.id;
-            const url = btn.dataset.toggleUrl;
-
-            btn.classList.add('is-loading');
-
-            try {
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': csrf,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                const data = await res.json();
-
-                if (!data.success) {
-                    alert(data.message || "Échec commande moteur");
-                    return;
-                }
-
-                // Mettre à jour UI immédiatement avec l’état demandé (cut true/false)
-                setUI(id, {
-                    success: true,
-                    engine: {
-                        cut: !!data.engine?.cut
-                    },
-                    gps: {
-                        online: null
-                    }
-                });
-
-            } catch (e) {
-                alert("Erreur réseau");
-            } finally {
-                btn.classList.remove('is-loading');
-            }
+        setUI(id, {
+          success: true,
+          engine: { cut: !!data.engine?.cut },
+          gps: { online: null }
         });
+
+      } catch (e) {
+        alert("Erreur réseau");
+      } finally {
+        btn.classList.remove('is-loading');
+      }
     });
+  });
 });
 </script>
 
 
+
 {{-- Leaflet --}}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+
+{{-- modale timezone et spidezone --}}
+<script>
+(function () {
+  const modal = document.getElementById('vehicleAlertModal');
+  const form = document.getElementById('vehicle-alerts-form');
+  const labelEl = document.getElementById('vehicleAlertVehicleLabel');
+
+  const closeBtn = document.getElementById('closeVehicleAlertModalBtn');
+  const cancelBtn = document.getElementById('cancelVehicleAlertBtn');
+
+  const inputStart = document.getElementById('time_zone_start');
+  const inputEnd = document.getElementById('time_zone_end');
+  const inputSpeed = document.getElementById('speed_zone');
+
+  // URL template (relative, important en prod si sous-dossier / proxy)
+  const urlTpl = @json(route('tracking.vehicles.alerts.define', ['voiture' => '__ID__'], false));
+
+  function normalizeTime(t) {
+    if (!t) return '';
+    // support "22:00:00" -> "22:00"
+    const s = String(t).trim();
+    return s.length >= 5 ? s.slice(0, 5) : s;
+  }
+
+  function openModal() {
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal() {
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    document.body.style.overflow = '';
+  }
+
+  // ✅ Fonction globale appelée par le onclick
+  window.openVehicleAlertModal = function (vehicleId, label, start, end, speed) {
+    if (!form) return;
+
+    // set label
+    if (labelEl) labelEl.textContent = label || '';
+
+    // set form action
+    form.action = urlTpl.replace('__ID__', String(vehicleId));
+
+    // prefill
+    if (inputStart) inputStart.value = normalizeTime(start);
+    if (inputEnd) inputEnd.value = normalizeTime(end);
+
+    if (inputSpeed) {
+      const sp = (speed === null || speed === undefined) ? '' : String(speed).trim();
+      inputSpeed.value = sp;
+    }
+
+    openModal();
+  };
+
+  // close buttons
+  closeBtn && closeBtn.addEventListener('click', closeModal);
+  cancelBtn && cancelBtn.addEventListener('click', closeModal);
+
+  // click outside
+  modal && modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  // ESC
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+  });
+})();
+</script>
+
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 

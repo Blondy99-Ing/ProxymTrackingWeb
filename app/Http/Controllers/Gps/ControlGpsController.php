@@ -9,24 +9,20 @@ use App\Models\Voiture;
 use App\Services\GpsControlService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Str;
 
 class ControlGpsController extends Controller
 {
-    public function __construct(private GpsControlService $gps)
-    {
-    }
+    public function __construct(private GpsControlService $gps) {}
 
     /**
-     * ✅ Batch : retourne les statuts moteur + GPS online/offline pour une liste de véhicules.
+     * ✅ BATCH: 1 appel pour tous les statuts (moteur + gps)
      * GET /voitures/engine-status/batch?ids=1,2,3
      */
     public function engineStatusBatch(Request $request)
     {
-        $idsRaw = (string) $request->query('ids', '');
-        $ids = collect(explode(',', $idsRaw))
-            ->map(fn($v) => (int) trim($v))
-            ->filter(fn($v) => $v > 0)
+        $ids = collect(explode(',', (string) $request->query('ids', '')))
+            ->map(fn ($v) => (int) trim($v))
+            ->filter(fn ($v) => $v > 0)
             ->unique()
             ->values();
 
@@ -38,80 +34,68 @@ class ControlGpsController extends Controller
             ], 422);
         }
 
-        // ✅ Sécurité: uniquement les voitures liées au user connecté (pivot association_user_voitures)
         $voitures = Voiture::query()
             ->whereIn('id', $ids->all())
-            ->whereHas('user', fn($q) => $q->where('users.id', Auth::id()))
             ->get(['id', 'mac_id_gps']);
 
+        $voituresById = $voitures->keyBy('id');
+
+        // macs
         $macs = $voitures->pluck('mac_id_gps')->filter()->unique()->values()->all();
 
+        // last locations in one query
         $lastLocationsByMac = $this->fetchLastLocationsByMac($macs);
 
         $out = [];
-        foreach ($voitures as $v) {
-            $mac = (string) $v->mac_id_gps;
-            $loc = $lastLocationsByMac[$mac] ?? null;
+        foreach ($ids as $id) {
 
+            if (!isset($voituresById[$id])) {
+                $out[$id] = ['success' => false, 'message' => 'VEHICLE_NOT_FOUND'];
+                continue;
+            }
+
+            $v = $voituresById[$id];
+            $mac = (string) $v->mac_id_gps;
+
+            if ($mac === '') {
+                $out[$id] = ['success' => false, 'message' => 'NO_MAC_ID'];
+                continue;
+            }
+
+            $loc = $lastLocationsByMac[$mac] ?? null;
             if (!$loc) {
-                $out[$v->id] = [
-                    'success' => false,
-                    'message' => 'Aucune location trouvée',
-                    'engine' => [
-                        'cut' => null,
-                        'engineState' => 'UNKNOWN',
-                    ],
-                    'gps' => [
-                        'online' => null,
-                        'last_seen' => null,
-                    ],
-                ];
+                $out[$id] = ['success' => false, 'message' => 'NO_LOCATION'];
                 continue;
             }
 
             $decoded = $this->gps->decodeEngineStatus($loc->status);
+            $cut = (($decoded['engineState'] ?? 'UNKNOWN') === 'CUT');
 
-            $cut = ($decoded['engineState'] ?? 'UNKNOWN') === 'CUT';
-            $online = $this->isGpsOnline($loc);
-
-            $out[$v->id] = [
+            $out[$id] = [
                 'success' => true,
                 'engine' => [
                     'cut' => $cut,
                     'engineState' => $decoded['engineState'] ?? 'UNKNOWN',
-                    'accState' => $decoded['accState'] ?? null,
-                    'relayState' => $decoded['relayState'] ?? null,
-                    'status_bits' => $decoded['status_bits'] ?? null,
                 ],
                 'gps' => [
-                    'online' => $online,
+                    'online' => $this->isGpsOnline($loc),
                     'last_seen' => (string) ($loc->heart_time ?? $loc->sys_time ?? $loc->datetime),
                 ],
-                'datetime' => (string) $loc->datetime,
-                'speed' => (float) ($loc->speed ?? 0),
             ];
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => $out,
-        ]);
+        return response()->json(['success' => true, 'data' => $out]);
     }
 
     /**
-     * ✅ Statut 1 véhicule (si tu veux garder un endpoint simple)
+     * ✅ 1 véhicule
      * GET /voitures/{voiture}/engine-status
      */
     public function engineStatus(Voiture $voiture)
     {
-        $this->authorizeVehicle($voiture);
-
         $mac = (string) $voiture->mac_id_gps;
         if ($mac === '') {
-            return response()->json([
-                'success' => false,
-                'message' => 'mac_id_gps manquant sur ce véhicule'
-            ], 422);
+            return response()->json(['success' => false, 'message' => 'NO_MAC_ID'], 422);
         }
 
         $loc = Location::query()
@@ -120,91 +104,71 @@ class ControlGpsController extends Controller
             ->first();
 
         if (!$loc) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Aucune location trouvée'
-            ], 404);
+            return response()->json(['success' => false, 'message' => 'NO_LOCATION'], 404);
         }
 
         $decoded = $this->gps->decodeEngineStatus($loc->status);
+        $cut = (($decoded['engineState'] ?? 'UNKNOWN') === 'CUT');
 
         return response()->json([
             'success' => true,
             'engine' => [
-                'cut' => (($decoded['engineState'] ?? 'UNKNOWN') === 'CUT'),
+                'cut' => $cut,
                 'engineState' => $decoded['engineState'] ?? 'UNKNOWN',
-                'accState' => $decoded['accState'] ?? null,
-                'relayState' => $decoded['relayState'] ?? null,
             ],
             'gps' => [
                 'online' => $this->isGpsOnline($loc),
                 'last_seen' => (string) ($loc->heart_time ?? $loc->sys_time ?? $loc->datetime),
             ],
-            'datetime' => (string) $loc->datetime,
         ]);
     }
 
     /**
-     * ✅ Toggle : coupe si pas coupé, rétablit si coupé.
+     * ✅ Toggle + log DB seulement si SEND_OK
      * POST /voitures/{voiture}/toggle-engine
-     *
-     * ✅ Enregistre dans commands UNIQUEMENT si succès provider
-     * ❌ Si échec provider: pas d'insert, message d'erreur JSON
      */
     public function toggleEngine(Request $request, Voiture $voiture)
 {
-    $this->authorizeVehicle($voiture);
-
     $mac = (string) $voiture->mac_id_gps;
     if ($mac === '') {
-        return response()->json([
-            'success' => false,
-            'message' => 'mac_id_gps manquant sur ce véhicule'
-        ], 422);
+        return response()->json(['success' => false, 'message' => 'NO_MAC_ID'], 422);
     }
 
-    // ✅ employe_id obligatoire (user_id doit rester null)
-    $employeId = $this->currentEmployeId();
-    if (!$employeId) {
-        return response()->json([
-            'success' => false,
-            'message' => "Impossible d'identifier l'employé connecté (employe_id)."
-        ], 401);
-    }
-
-    // état courant depuis la dernière location
-    $loc = \App\Models\Location::query()
-        ->where('mac_id_gps', $mac)
-        ->orderByDesc('datetime')
-        ->first();
-
+    $loc = Location::query()->where('mac_id_gps', $mac)->orderByDesc('datetime')->first();
     $decoded = $this->gps->decodeEngineStatus($loc?->status);
     $currentlyCut = (($decoded['engineState'] ?? 'UNKNOWN') === 'CUT');
 
     $action = $currentlyCut ? 'restore' : 'cut';
 
-    // appel provider
     $providerResp = $action === 'cut'
         ? $this->gps->cutEngine($mac)       // CLOSERELAY
         : $this->gps->restoreEngine($mac);  // OPENRELAY
 
-    // ✅ Ici: on accepte SEULEMENT si ReturnMsg=SEND_OK
     $parsed = $this->parseSendCommandResponse($providerResp);
+
+    // ✅ si file saturée → clear + retry 1 fois
+    if (!$parsed['ok'] && strtoupper((string)$parsed['returnMsg']) === 'CMD_EXCEEDLENGTH') {
+        $this->gps->clearCmdList($mac);
+
+        $providerResp = $action === 'cut'
+            ? $this->gps->cutEngine($mac)
+            : $this->gps->restoreEngine($mac);
+
+        $parsed = $this->parseSendCommandResponse($providerResp);
+    }
 
     if (!$parsed['ok']) {
         return response()->json([
             'success' => false,
-            'message' => $parsed['message'],  // <-- message clair pour le frontend
+            'message' => $parsed['message'],
+            'return_msg' => $parsed['returnMsg'],
             'provider' => $providerResp,
         ], 422);
     }
 
-
-    $type = $action === 'cut' ? 'coupure_moteur' : 'allumage_moteur';
     $cmdNo = $parsed['cmdNo'];
+    $employeId = $this->currentEmployeId();
 
-    // ✅ Enregistrer UNIQUEMENT les succès
-    // ✅ user_id = null ; employe_id = employé connecté
     Commande::updateOrCreate(
         ['CmdNo' => $cmdNo],
         [
@@ -212,59 +176,93 @@ class ControlGpsController extends Controller
             'employe_id'  => $employeId,
             'vehicule_id' => $voiture->id,
             'status'      => 'SEND_OK',
-            'type_commande'  => $type,
         ]
     );
 
     return response()->json([
         'success' => true,
-        'message' => $action === 'cut' ? 'Véhicule coupé (commande OK)' : 'Véhicule rétabli (commande OK)',
-        'action'  => $action,
-        'cmd_no'  => $cmdNo,
-        'engine'  => [
-            'cut' => ($action === 'cut'),
-        ],
+        'message' => $action === 'cut' ? 'Commande coupure OK' : 'Commande allumage OK',
+        'cmd_no' => $cmdNo,
+        'return_msg' => $parsed['returnMsg'],
+        'engine' => ['cut' => ($action === 'cut')],
     ]);
 }
 
-    /* ===================== Helpers ===================== */
 
-    private function authorizeVehicle(Voiture $voiture): void
+    /* ====================== Helpers ====================== */
+
+    private function parseSendCommandResponse(array $resp): array
     {
-        $ok = $voiture->user()->where('users.id', Auth::id())->exists();
-        abort_unless($ok, 403, 'Accès interdit à ce véhicule');
-    }
+        // 1) succès global ASMX
+        $success = $resp['success'] ?? null;
+        $errorCode = (string) ($resp['errorCode'] ?? ($resp['code'] ?? ''));
 
-    private function providerOk(array $data): bool
-    {
-        $success = $data['success'] ?? null;
-        $errorCode = (string) ($data['errorCode'] ?? ($data['code'] ?? ''));
-
-        return ($success === true || $success === 'true')
+        $globalOk = ($success === true || $success === 'true')
             && ($errorCode === '' || $errorCode === '200' || $errorCode === '0');
-    }
 
-    private function extractCmdNo(array $data): ?string
-    {
-        // provider peut renvoyer cmdNo dans plusieurs formes
-        $candidates = [
-            $data['cmdNo'] ?? null,
-            $data['CmdNo'] ?? null,
-            $data['cmdno'] ?? null,
-            $data['data']['cmdNo'] ?? null,
-            $data['data']['CmdNo'] ?? null,
-        ];
-
-        foreach ($candidates as $c) {
-            $c = is_string($c) ? trim($c) : '';
-            if ($c !== '') return $c;
+        if (!$globalOk) {
+            $msg = (string) ($resp['errorDescribe'] ?? $resp['msg'] ?? $resp['message'] ?? 'Commande échouée');
+            return [
+                'ok' => false,
+                'cmdNo' => null,
+                'returnMsg' => null,
+                'message' => $msg,
+            ];
         }
-        return null;
+
+        // 2) data[0]
+        $row = $resp['data'][0] ?? null;
+        if (!is_array($row)) {
+            return [
+                'ok' => false,
+                'cmdNo' => null,
+                'returnMsg' => null,
+                'message' => 'Commande non confirmée (data vide)',
+            ];
+        }
+
+        $returnMsg = strtoupper(trim((string) ($row['ReturnMsg'] ?? $row['returnMsg'] ?? '')));
+        $cmdNo = trim((string) ($row['CmdNo'] ?? $row['cmdNo'] ?? ''));
+
+        if ($returnMsg !== 'SEND_OK') {
+            // ex: CMD_EXCEEDLENGTH / CMD_NOT_SUPPORT / etc.
+            return [
+                'ok' => false,
+                'cmdNo' => null,
+                'returnMsg' => $returnMsg ?: null,
+                'message' => $returnMsg ?: 'Commande refusée',
+            ];
+        }
+
+        if ($cmdNo === '') {
+            return [
+                'ok' => false,
+                'cmdNo' => null,
+                'returnMsg' => $returnMsg,
+                'message' => 'SEND_OK mais CmdNo manquant',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'cmdNo' => $cmdNo,
+            'returnMsg' => $returnMsg,
+            'message' => 'SEND_OK',
+        ];
     }
 
-    /**
-     * ✅ Récupère la dernière location par mac_id_gps en 1 requête.
-     */
+    private function currentEmployeId(): ?int
+    {
+        // si tu as un guard employe
+        try {
+            $id = Auth::guard('employe')->id();
+            if ($id) return (int) $id;
+        } catch (\Throwable) {}
+
+        // fallback
+        return Auth::check() ? (int) Auth::id() : null;
+    }
+
     private function fetchLastLocationsByMac(array $macIds): array
     {
         if (empty($macIds)) return [];
@@ -277,13 +275,12 @@ class ControlGpsController extends Controller
         $rows = Location::query()
             ->joinSub($sub, 't', function ($join) {
                 $join->on('locations.mac_id_gps', '=', 't.mac_id_gps')
-                     ->on('locations.datetime', '=', 't.max_dt');
+                    ->on('locations.datetime', '=', 't.max_dt');
             })
             ->get([
                 'locations.mac_id_gps',
                 'locations.datetime',
                 'locations.status',
-                'locations.speed',
                 'locations.heart_time',
                 'locations.sys_time',
             ]);
@@ -291,10 +288,6 @@ class ControlGpsController extends Controller
         return $rows->keyBy('mac_id_gps')->all();
     }
 
-    /**
-     * Déduit ONLINE/OFFLINE depuis heart_time/sys_time/datetime.
-     * Tu peux ajuster le seuil (ex: 10 min).
-     */
     private function isGpsOnline($loc): ?bool
     {
         $last = $loc->heart_time ?? $loc->sys_time ?? $loc->datetime;
@@ -307,66 +300,4 @@ class ControlGpsController extends Controller
             return null;
         }
     }
-
-
-
-
-
-
-
-    private function parseSendCommandResponse(array $resp): array
-{
-    $success = $resp['success'] ?? null;
-    $errorCode = (string) ($resp['errorCode'] ?? ($resp['code'] ?? ''));
-
-    // 1) check global success
-    $globalOk = ($success === true || $success === 'true')
-        && ($errorCode === '' || $errorCode === '200' || $errorCode === '0');
-
-    if (!$globalOk) {
-        $msg = (string) (
-            $resp['errorDescribe']
-            ?? $resp['msg']
-            ?? $resp['message']
-            ?? 'Commande GPS échouée'
-        );
-
-        return ['ok' => false, 'cmdNo' => null, 'message' => $msg];
-    }
-
-    // 2) check provider data[0].ReturnMsg == SEND_OK
-    $row = $resp['data'][0] ?? null;
-    if (!is_array($row)) {
-        return ['ok' => false, 'cmdNo' => null, 'message' => 'Commande non confirmée (data vide).'];
-    }
-
-    $returnMsg = strtoupper(trim((string)($row['ReturnMsg'] ?? '')));
-    $cmdNo     = trim((string)($row['CmdNo'] ?? ''));
-
-    if ($returnMsg !== 'SEND_OK') {
-        $m = $returnMsg !== '' ? $returnMsg : 'Commande refusée par le provider';
-        return ['ok' => false, 'cmdNo' => null, 'message' => $m];
-    }
-
-    if ($cmdNo === '') {
-        return ['ok' => false, 'cmdNo' => null, 'message' => 'SEND_OK mais CmdNo manquant.'];
-    }
-
-    return ['ok' => true, 'cmdNo' => $cmdNo, 'message' => 'SEND_OK'];
-}
-
-private function currentEmployeId(): ?int
-{
-    // ✅ si tu utilises un guard "employe"
-    try {
-        $id = Auth::guard('employe')->id();
-        if ($id) return (int) $id;
-    } catch (\Throwable $e) {
-        // guard non configuré -> fallback
-    }
-
-    // ✅ fallback : si ton auth actuel est celui des employés
-    return Auth::check() ? (int) Auth::id() : null;
-}
-
 }

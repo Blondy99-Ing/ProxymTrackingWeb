@@ -110,12 +110,7 @@ Route::prefix('voitures')->group(function () {
 Route::get('/api/fleet-positions', [DashboardController::class, 'fleetPositions'])
     ->name('fleet.positions');
 
-// couper le moteur
-Route::get('/voitures/{id}/engine-status', [VoitureController::class, 'getEngineStatus'])
-    ->name('voitures.engineStatus');
 
-Route::post('/voitures/{id}/toggle-engine', [VoitureController::class, 'toggleEngine'])
-    ->name('voitures.toggleEngine');
 
 
 
