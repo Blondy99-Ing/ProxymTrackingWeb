@@ -8,19 +8,19 @@
 
     {{-- Messages --}}
     @if(session('success'))
-        <div class="ui-card p-3">
-            <p class="text-sm font-medium text-secondary">
-                <i class="fas fa-check-circle mr-2"></i>{{ session('success') }}
-            </p>
-        </div>
+    <div class="ui-card p-3">
+        <p class="text-sm font-medium text-secondary">
+            <i class="fas fa-check-circle mr-2"></i>{{ session('success') }}
+        </p>
+    </div>
     @endif
 
     @if(session('error'))
-        <div class="ui-card p-3 is-error-state">
-            <p class="text-sm font-medium text-secondary">
-                <i class="fas fa-exclamation-triangle mr-2"></i>{{ session('error') }}
-            </p>
-        </div>
+    <div class="ui-card p-3 is-error-state">
+        <p class="text-sm font-medium text-secondary">
+            <i class="fas fa-exclamation-triangle mr-2"></i>{{ session('error') }}
+        </p>
+    </div>
     @endif
 
     {{-- Actions top --}}
@@ -46,64 +46,120 @@
                     <tr>
                         <th colspan="5">
                             <form id="gpsSimSearchForm" method="GET" action="{{ route('gps_sim.index') }}">
-                                <input
-                                    id="gpsSimSearchInput"
-                                    type="text"
-                                    name="q"
-                                    value="{{ $q ?? request('q') }}"
-                                    class="ui-input-style"
-                                    placeholder="Rechercher (mac_id / objectid / sim)..."
-                                    autocomplete="off"
-                                >
+                                <input id="gpsSimSearchInput" type="text" name="q" value="{{ $q ?? request('q') }}"
+                                    class="ui-input-style" placeholder="Rechercher (mac_id / SIM / statut)..."
+                                    autocomplete="off" />
+
                             </form>
                         </th>
                     </tr>
 
                     <tr>
                         <th>MAC ID</th>
-                        <th>ObjectID</th>
+                        <th>Statut</th>
                         <th>SIM</th>
                         <th>Dernière MAJ</th>
                         <th>Actions</th>
                     </tr>
+
                 </thead>
 
                 <tbody id="gpsSimTbody">
                     @foreach($items ?? [] as $item)
-                        <tr data-row>
-                            <td>{{ $item->mac_id }}</td>
-                            <td>{{ $item->objectid }}</td>
-                            <td>
-                                @if(!empty($item->sim_number))
-                                    {{ $item->sim_number }}
-                                @else
-                                    <span class="text-secondary">—</span>
-                                @endif
-                            </td>
-                            <td>{{ optional($item->updated_at)->format('Y-m-d H:i') }}</td>
-                            <td class="space-x-1 whitespace-nowrap">
-                                {{-- Ajouter / Modifier SIM --}}
-                                <button
-                                    type="button"
-                                    class="btn-secondary"
-                                    title="Ajouter / Modifier la SIM"
-                                    onclick="openSimModal(
-                                        {{ (int)$item->id }},
-                                        '{{ addslashes($item->mac_id) }}',
-                                        '{{ addslashes($item->sim_number ?? '') }}'
-                                    )"
-                                >
-                                    <i class="fas fa-sim-card mr-2"></i>
-                                    @if(!empty($item->sim_number))
-                                        Modifier SIM
-                                    @else
-                                        Ajouter SIM
+                    <tr data-row>
+                        {{-- MAC ID --}}
+                        <td>{{ $item->mac_id }}</td>
+
+                        {{-- ✅ STATUT : Moteur + GPS --}}
+                        {{-- ✅ STATUT : Moteur + GPS en display:flex --}}
+                        <td>
+                            @php
+                            $engine = $item->engine_state; // CUT / ON / OFF / UNKNOWN / null
+                            $gpsOnline = $item->gps_online; // true / false / null
+                            @endphp
+
+                            @if(is_null($engine) && is_null($gpsOnline))
+                            <span class="text-secondary text-xs">N/A</span>
+                            @else
+                            <div class="flex flex-wrap items-center gap-2">
+                                {{-- Moteur --}}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px]
+                @if($engine === 'CUT')
+                    bg-red-500 text-white
+                @elseif($engine === 'ON')
+                    bg-green-500 text-white
+                @elseif($engine === 'OFF')
+                    bg-yellow-400 text-black
+                @else
+                    bg-gray-400 text-white
+                @endif
+            ">
+                                    <i class="fas fa-car-battery mr-1 text-[10px]"></i>
+                                    <span class="font-semibold mr-1">Moteur :</span>
+                                    <span>{{ $engine ?? 'Inconnu' }}</span>
+                                </span>
+
+                                {{-- GPS --}}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px]
+                @if($gpsOnline === true)
+                    bg-green-500 text-white
+                @elseif($gpsOnline === false)
+                    bg-red-500 text-white
+                @else
+                    bg-gray-400 text-white
+                @endif
+            " @if($item->gps_last_seen)
+                                    title="Dernier signal : {{ $item->gps_last_seen }}"
                                     @endif
-                                </button>
-                            </td>
-                        </tr>
+                                    >
+                                    <i class="fas fa-satellite-dish mr-1 text-[10px]"></i>
+                                    <span class="font-semibold mr-1">GPS :</span>
+                                    <span>
+                                        @if($gpsOnline === true)
+                                        En ligne
+                                        @elseif($gpsOnline === false)
+                                        Hors-ligne
+                                        @else
+                                        Inconnu
+                                        @endif
+                                    </span>
+                                </span>
+                            </div>
+                            @endif
+                        </td>
+
+
+                        {{-- SIM --}}
+                        <td>
+                            @if(!empty($item->sim_number))
+                            {{ $item->sim_number }}
+                            @else
+                            <span class="text-secondary">—</span>
+                            @endif
+                        </td>
+
+                        {{-- Dernière MAJ --}}
+                        <td>{{ optional($item->created_at)->format('Y-m-d H:i') }}</td>
+
+                        {{-- Actions (inchangé) --}}
+                        <td class="space-x-1 whitespace-nowrap">
+                            <button type="button" class="btn-secondary" title="Ajouter / Modifier la SIM" onclick="openSimModal(
+                        {{ (int)$item->id }},
+                        '{{ addslashes($item->mac_id) }}',
+                        '{{ addslashes($item->sim_number ?? '') }}'
+                    )">
+                                <i class="fas fa-sim-card mr-2"></i>
+                                @if(!empty($item->sim_number))
+                                Modifier SIM
+                                @else
+                                Ajouter SIM
+                                @endif
+                            </button>
+                        </td>
+                    </tr>
                     @endforeach
                 </tbody>
+
             </table>
         </div>
 
@@ -150,13 +206,8 @@
                     <label for="sim_number" class="block text-sm font-medium text-secondary mb-1">
                         Numéro SIM
                     </label>
-                    <input
-                        type="text"
-                        id="sim_number"
-                        name="sim_number"
-                        class="ui-input-style"
-                        placeholder="Ex: 696000000"
-                    >
+                    <input type="text" id="sim_number" name="sim_number" class="ui-input-style"
+                        placeholder="Ex: 696000000">
                 </div>
             </div>
 
@@ -175,12 +226,12 @@
 </div>
 
 <script>
-(function () {
+(function() {
     // =========================
     // Recherche automatique
     // =========================
     const input = document.getElementById('gpsSimSearchInput');
-    const form  = document.getElementById('gpsSimSearchForm');
+    const form = document.getElementById('gpsSimSearchForm');
     const tbody = document.getElementById('gpsSimTbody');
 
     if (input && form && tbody) {
@@ -197,7 +248,7 @@
 
         filterRows(input.value);
 
-        input.addEventListener('input', function () {
+        input.addEventListener('input', function() {
             filterRows(input.value);
 
             clearTimeout(timer);
@@ -238,7 +289,7 @@
         document.body.style.overflow = '';
     }
 
-    window.openSimModal = function (id, macId, simNumber) {
+    window.openSimModal = function(id, macId, simNumber) {
         if (!formSim) return;
 
         // ✅ force POST + _method PATCH (évite PUT)
