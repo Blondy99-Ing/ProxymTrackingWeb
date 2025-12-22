@@ -14,6 +14,18 @@ class ControlGpsController extends Controller
 {
     public function __construct(private GpsControlService $gps) {}
 
+
+
+      /**
+     * PAGE INDEX – Liste + Form
+     */
+    public function index(Request $request)
+    {
+        $voitures = Voiture::all();
+
+        return view('coupure_moteur.index', compact('voitures'));
+    }
+
     /**
      * ✅ BATCH: 1 appel pour tous les statuts (moteur + gps)
      * GET /voitures/engine-status/batch?ids=1,2,3

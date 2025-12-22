@@ -5,9 +5,7 @@
 @section('content')
 <div class="space-y-8 p-4 md:p-8">
 
-    {{-- Titre Principal --}}
-
-    {{-- Bande de navigation secondaire (Dark Mode Ready) --}}
+    {{-- Navigation --}}
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-4"
         style="border-color: var(--color-border-subtle);">
         <div class="flex mt-4 sm:mt-0 space-x-4">
@@ -22,23 +20,7 @@
         </div>
     </div>
 
-    {{-- Messages (Dark Mode Ready) --}}
-    @if(session('success'))
-    <div class="bg-green-100 dark:bg-green-900 border border-green-400 dark:border-green-600 text-green-700 dark:text-green-300 px-4 py-3 rounded mb-4 ui-card">
-        {{ session('success') }}
-    </div>
-    @endif
-
-    @if($errors->any())
-    <div class="bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-300 px-4 py-3 rounded mb-4 ui-card">
-        <strong>Erreurs de validation :</strong>
-        <ul class="list-disc list-inside mt-1">
-            @foreach($errors->all() as $error)
-            <li>{{ $error }}</li>
-            @endforeach
-        </ul>
-    </div>
-    @endif
+   
 
     <div class="ui-card">
         <div class="flex justify-between items-center mb-6">
@@ -52,6 +34,7 @@
             <table id="usersTable" class="ui-table w-full">
                 <thead>
                     <tr>
+                        <th>Rôle</th>
                         <th>Nom et Prénom</th>
                         <th>Téléphone</th>
                         <th>Ville</th>
@@ -63,37 +46,43 @@
                 </thead>
                 <tbody>
                     @foreach($users ?? [] as $user)
-                    <tr class="hover:bg-hover-subtle transition-colors">
-                        <td style="color: var(--color-text);">{{ $user->nom }} {{ $user->prenom }}</td>
-                        <td class="text-secondary">{{ $user->phone }}</td>
-                        <td>{{ $user->ville }}</td>
-                        <td>{{ $user->quartier }}</td>
-                        <td>{{ $user->email }}</td>
-                        <td>
-                            <img src="{{ $user->photo ? asset('storage/' . $user->photo) : 'https://placehold.co/40x40/F58220/ffffff?text=NP' }}"
-                                alt="Photo" class="h-10 w-10 object-cover rounded-full border border-border-subtle">
-                        </td>
-                        <td class="space-x-2">
-                            {{-- Voir (Dark Mode Ready) --}}
-                            <a href="#" class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 p-2"
-                                title="Voir les détails">
-                                <i class="fas fa-eye"></i>
-                            </a>
-                            {{-- Modifier (Dark Mode Ready) --}}
-                            <button class="text-yellow-500 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-200 p-2 btn-edit" data-user="{{ json_encode($user) }}" title="Modifier">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            {{-- Supprimer (Dark Mode Ready) --}}
-                            <form action="{{ route('tracking.users.destroy', $user->id) }}" method="POST"
-                                class="inline-block" onsubmit="return confirm('Confirmer la suppression de {{ $user->prenom }} {{ $user->nom }} ?')">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 p-2" title="Supprimer">
-                                    <i class="fas fa-trash"></i>
+                        <tr class="hover:bg-hover-subtle transition-colors">
+                            <td>{{ $user->role?->name ?? '-' }}</td>
+                            <td style="color: var(--color-text);">{{ $user->nom }} {{ $user->prenom }}</td>
+                            <td class="text-secondary">{{ $user->phone }}</td>
+                            <td>{{ $user->ville }}</td>
+                            <td>{{ $user->quartier }}</td>
+                            <td>{{ $user->email }}</td>
+                            <td>
+                                <img
+                                    src="{{ $user->photo ? asset('storage/' . $user->photo) : 'https://placehold.co/40x40/F58220/ffffff?text=NP' }}"
+                                    alt="Photo"
+                                    class="h-10 w-10 object-cover rounded-full border border-border-subtle"
+                                >
+                            </td>
+                            <td class="space-x-2 whitespace-nowrap">
+                                {{-- Modifier --}}
+                                <button
+                                    class="text-yellow-500 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-200 p-2 btn-edit"
+                                    data-user='@json($user)'
+                                    title="Modifier">
+                                    <i class="fas fa-edit"></i>
                                 </button>
-                            </form>
-                        </td>
-                    </tr>
+
+                                {{-- Supprimer --}}
+                                <form action="{{ route('tracking.users.destroy', $user->id) }}" method="POST"
+                                      class="inline-block"
+                                      onsubmit="return confirm('Confirmer la suppression de {{ $user->prenom }} {{ $user->nom }} ?')">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit"
+                                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 p-2"
+                                            title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
                     @endforeach
                 </tbody>
             </table>
@@ -102,83 +91,102 @@
 
 </div>
 
-<div id="userModal" class="fixed inset-0 bg-black bg-opacity-75 hidden z-[9999] flex items-center justify-center transition-opacity duration-300">
-    <div
-        class="bg-card rounded-2xl w-full max-w-2xl p-6 relative shadow-lg transform transition-transform duration-300 scale-95 opacity-0 ui-card">
-        
-        <button id="closeModalBtn"
-            class="absolute top-4 right-4 text-secondary hover:text-red-500 text-xl font-bold transition-colors">&times;</button>
-        
-        <h2 id="modalTitle" class="text-xl font-bold font-orbitron mb-6" style="color: var(--color-text);">Ajouter un Utilisateur</h2>
+{{-- ================= MODALE AJOUT / EDIT ================= --}}
+<div id="userModal"
+     class="fixed inset-0 bg-black bg-opacity-75 hidden z-[9999] flex items-center justify-center transition-opacity duration-300">
+    <div class="bg-card rounded-2xl w-full max-w-2xl p-6 relative shadow-lg transform transition-transform duration-300 scale-95 opacity-0 ui-card">
 
-        <form id="userForm" method="POST" enctype="multipart/form-data" class="space-y-4">
-            {{-- Le token CSRF sera géré par JavaScript lors de l'édition si la méthode change en PUT --}}
-            @csrf 
-            <input type="hidden" id="userId" name="user_id">
-            <input type="hidden" name="_method" id="formMethod" value="POST"> {{-- Simplification pour la gestion PUT --}}
+        <button id="closeModalBtn"
+                class="absolute top-4 right-4 text-secondary hover:text-red-500 text-xl font-bold transition-colors">
+            &times;
+        </button>
+
+        <h2 id="modalTitle" class="text-xl font-bold font-orbitron mb-6" style="color: var(--color-text);">
+            Ajouter un Utilisateur
+        </h2>
+
+        {{-- ✅ IMPORTANT : action par défaut = STORE --}}
+        <form id="userForm"
+              action="{{ route('tracking.users.store') }}"
+              method="POST"
+              enctype="multipart/form-data"
+              class="space-y-4">
+            @csrf
+
+            {{-- id en édition --}}
+            <input type="hidden" id="userId" value="">
+
+            {{-- spoof method uniquement en édition (injected par JS) --}}
+            <div id="methodSpoofContainer"></div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label for="nom" class="block text-sm font-medium text-secondary">Nom</label>
-                    <input type="text" id="nom" name="nom"
-                        class="ui-input-style mt-1" required>
+                    <input type="text" id="nom" name="nom" class="ui-input-style mt-1" required>
                 </div>
                 <div>
                     <label for="prenom" class="block text-sm font-medium text-secondary">Prénom</label>
-                    <input type="text" id="prenom" name="prenom"
-                        class="ui-input-style mt-1" required>
+                    <input type="text" id="prenom" name="prenom" class="ui-input-style mt-1" required>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label for="phone" class="block text-sm font-medium text-secondary">Téléphone</label>
-                    <input type="tel" id="phone" name="phone"
-                        class="ui-input-style mt-1" required>
+                    <input type="tel" id="phone" name="phone" class="ui-input-style mt-1" required>
                 </div>
                 <div>
                     <label for="email" class="block text-sm font-medium text-secondary">Email</label>
-                    <input type="email" id="email" name="email"
-                        class="ui-input-style mt-1" required>
+                    <input type="email" id="email" name="email" class="ui-input-style mt-1" required>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label for="ville" class="block text-sm font-medium text-secondary">Ville</label>
-                    <input type="text" id="ville" name="ville"
-                        class="ui-input-style mt-1">
+                    <input type="text" id="ville" name="ville" class="ui-input-style mt-1">
                 </div>
                 <div>
                     <label for="quartier" class="block text-sm font-medium text-secondary">Quartier</label>
-                    <input type="text" id="quartier" name="quartier"
-                        class="ui-input-style mt-1">
+                    <input type="text" id="quartier" name="quartier" class="ui-input-style mt-1">
                 </div>
             </div>
 
+            {{-- ✅ Role --}}
+            <div>
+                <label class="block text-sm font-medium text-secondary">Rôle</label>
+                <select id="role_id" name="role_id" required class="ui-input-style mt-1">
+                    <option value="">— Choisir un rôle —</option>
+                    @foreach($roles ?? [] as $role)
+                        <option value="{{ $role->id }}"
+                            {{ $role->slug === 'gestionnaire_plateforme' ? 'selected' : '' }}>
+                            {{ strtoupper($role->name) }} — {{ $role->description }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
+            {{-- Photo --}}
             <div class="space-y-2">
                 <label for="photo" class="block text-sm font-medium text-secondary">Photo</label>
-                <label for="photo"
-                    class="btn-secondary w-full text-center cursor-pointer transition-colors text-base">
+                <label for="photo" class="btn-secondary w-full text-center cursor-pointer transition-colors text-base">
                     Choisir un fichier
                 </label>
                 <input type="file" class="hidden" id="photo" name="photo" accept="image/*">
-                <div id="file-name" class="text-xs text-secondary italic">Aucun fichier sélectionné
-                </div>
-                <img id="preview" src="#" alt="Aperçu" class="mt-2 h-24 w-24 object-cover rounded-full hidden border border-border-subtle">
+                <div id="file-name" class="text-xs text-secondary italic">Aucun fichier sélectionné</div>
+                <img id="preview" src="#" alt="Aperçu"
+                     class="mt-2 h-24 w-24 object-cover rounded-full hidden border border-border-subtle">
             </div>
 
+            {{-- Password --}}
             <div id="passwordFields" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label for="password" class="block text-sm font-medium text-secondary">Mot de passe</label>
-                    <input type="password" id="password" name="password"
-                        class="ui-input-style mt-1">
+                    <input type="password" id="password" name="password" class="ui-input-style mt-1" required>
                 </div>
                 <div>
-                    <label for="password_confirmation"
-                        class="block text-sm font-medium text-secondary">Confirmer le mot de passe</label>
-                    <input type="password" id="password_confirmation" name="password_confirmation"
-                        class="ui-input-style mt-1">
+                    <label for="password_confirmation" class="block text-sm font-medium text-secondary">Confirmer le mot de passe</label>
+                    <input type="password" id="password_confirmation" name="password_confirmation" class="ui-input-style mt-1" required>
                 </div>
             </div>
 
@@ -189,31 +197,36 @@
     </div>
 </div>
 
-
+@push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
-    // --- DataTables ---
-    // Assurez-vous d'avoir bien les fichiers CSS/JS de DataTables inclus dans `layouts.app`
+    // DataTables
     if ($.fn.DataTable) {
         $('#usersTable').DataTable({
-            "language": {
-                "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/fr-FR.json"
-            }
+            language: { url: "//cdn.datatables.net/plug-ins/1.13.7/i18n/fr-FR.json" }
         });
     }
 
-
-    // --- Modal centrée ---
     const modal = document.getElementById('userModal');
     const openAddBtn = document.getElementById('openAddModalBtn');
     const closeBtn = document.getElementById('closeModalBtn');
+
     const modalTitle = document.getElementById('modalTitle');
     const userForm = document.getElementById('userForm');
     const submitBtn = document.getElementById('submitBtn');
-    const userIdInput = document.getElementById('userId');
-    const passwordFields = document.getElementById('passwordFields');
-    const formMethod = document.getElementById('formMethod');
+
+    const userIdHidden = document.getElementById('userId');
+    const methodSpoofContainer = document.getElementById('methodSpoofContainer');
+
+    const roleSelect = document.getElementById('role_id');
+
+    const passwordInput = document.getElementById('password');
+    const passwordConfirmInput = document.getElementById('password_confirmation');
+
+    const photoInput = document.getElementById('photo');
+    const fileNameDisplay = document.getElementById('file-name');
+    const preview = document.getElementById('preview');
 
     function openModal() {
         modal.classList.remove('hidden');
@@ -226,37 +239,52 @@ document.addEventListener('DOMContentLoaded', function() {
         modal.firstElementChild.classList.add('scale-95', 'opacity-0');
         document.body.style.overflow = '';
         setTimeout(() => {
-             modal.classList.add('hidden');
-             modal.classList.remove('opacity-100');
+            modal.classList.add('hidden');
+            modal.classList.remove('opacity-100');
         }, 200);
-        
-        userForm.reset();
-        document.getElementById('preview').classList.add('hidden');
-        document.getElementById('file-name').textContent = 'Aucun fichier sélectionné';
-        passwordFields.style.display = 'grid'; // Afficher par défaut pour l'ajout
-        submitBtn.innerHTML = '<i class="fas fa-user-plus mr-2"></i> Ajouter';
-        modalTitle.textContent = 'Ajouter un Utilisateur';
-        userForm.action = "{{ route('tracking.users.store') }}";
-        formMethod.value = 'POST';
-        userIdInput.value = '';
+
+        resetToAdd();
     }
-    
-    // Fermeture par clic sur l'arrière-plan
+
+    function resetToAdd() {
+        // reset form (revient aux valeurs HTML par défaut)
+        userForm.reset();
+
+        // ✅ store action par défaut
+        userForm.action = "{{ route('tracking.users.store') }}";
+        userIdHidden.value = '';
+
+        // ✅ enlever spoof PUT si existant
+        methodSpoofContainer.innerHTML = '';
+
+        // password obligatoire
+        passwordInput.required = true;
+        passwordConfirmInput.required = true;
+        passwordInput.value = '';
+        passwordConfirmInput.value = '';
+
+        // reset photo preview
+        preview.src = '#';
+        preview.classList.add('hidden');
+        fileNameDisplay.textContent = 'Aucun fichier sélectionné';
+
+        modalTitle.textContent = 'Ajouter un Utilisateur';
+        submitBtn.innerHTML = '<i class="fas fa-user-plus mr-2"></i> Ajouter';
+    }
+
+    // fermeture clic backdrop
     modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            closeModal();
-        }
+        if (e.target === modal) closeModal();
     });
-
-
-    openAddBtn.addEventListener('click', openModal);
     closeBtn.addEventListener('click', closeModal);
 
-    // --- Photo preview ---
-    const photoInput = document.getElementById('photo');
-    const fileNameDisplay = document.getElementById('file-name');
-    const preview = document.getElementById('preview');
+    // Ajout
+    openAddBtn.addEventListener('click', () => {
+        resetToAdd();
+        openModal();
+    });
 
+    // Photo preview
     photoInput.addEventListener('change', function() {
         const file = this.files[0];
         if (file) {
@@ -265,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
             reader.onload = e => {
                 preview.src = e.target.result;
                 preview.classList.remove('hidden');
-            }
+            };
             reader.readAsDataURL(file);
         } else {
             fileNameDisplay.textContent = 'Aucun fichier sélectionné';
@@ -273,41 +301,55 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // --- Edition ---
+    // Edition
     document.querySelectorAll('.btn-edit').forEach(button => {
         button.addEventListener('click', () => {
             const user = JSON.parse(button.getAttribute('data-user'));
-            
-            // Mise à jour de la modale pour l'édition
-            modalTitle.textContent = 'Modifier l\'Utilisateur';
-            submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i> Mettre à jour';
-            userForm.action = `{{ url('tracking/users') }}/${user.id}`; // Route d'action de mise à jour (PUT)
-            formMethod.value = 'PUT'; // Changement de la méthode pour Laravel
-            
-            userIdInput.value = user.id;
-            document.getElementById('nom').value = user.nom;
-            document.getElementById('prenom').value = user.prenom;
-            document.getElementById('phone').value = user.phone;
-            document.getElementById('email').value = user.email;
-            document.getElementById('ville').value = user.ville;
-            document.getElementById('quartier').value = user.quartier;
-            
-            // Les champs de mot de passe ne sont pas obligatoires lors de la modification
-            passwordFields.style.display = 'grid'; // Les afficher, mais sans l'attribut `required` sur les inputs
 
+            modalTitle.textContent = "Modifier l'Utilisateur";
+            submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i> Mettre à jour';
+
+            // ✅ update action
+            userForm.action = `{{ url('tracking/users') }}/${user.id}`;
+            userIdHidden.value = user.id;
+
+            // ✅ ajouter spoof PUT
+            methodSpoofContainer.innerHTML = `<input type="hidden" name="_method" value="PUT">`;
+
+            // remplir champs
+            document.getElementById('nom').value = user.nom || '';
+            document.getElementById('prenom').value = user.prenom || '';
+            document.getElementById('phone').value = user.phone || '';
+            document.getElementById('email').value = user.email || '';
+            document.getElementById('ville').value = user.ville || '';
+            document.getElementById('quartier').value = user.quartier || '';
+
+            // role
+            roleSelect.value = user.role_id || '';
+
+            // password optionnel en edit
+            passwordInput.required = false;
+            passwordConfirmInput.required = false;
+            passwordInput.value = '';
+            passwordConfirmInput.value = '';
+
+            // photo
             if (user.photo) {
                 preview.src = `/storage/${user.photo}`;
                 preview.classList.remove('hidden');
+                fileNameDisplay.textContent = 'Laisser vide pour conserver la photo actuelle';
             } else {
                 preview.src = '#';
                 preview.classList.add('hidden');
+                fileNameDisplay.textContent = 'Laisser vide pour conserver la photo actuelle';
             }
-            fileNameDisplay.textContent = 'Laisser vide pour conserver la photo actuelle';
 
             openModal();
         });
     });
+
 });
 </script>
+@endpush
 
 @endsection

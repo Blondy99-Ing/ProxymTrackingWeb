@@ -28,6 +28,7 @@ class Employe extends Authenticatable
         'quartier',
         'photo',
         'password',
+        'role_id',
     ];
 
     /**
@@ -61,5 +62,9 @@ class Employe extends Authenticatable
 }
 
 
+public function role()
+{
+    return $this->belongsTo(\App\Models\Role::class);
+}
 
 }

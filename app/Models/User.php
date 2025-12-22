@@ -28,6 +28,7 @@ class User extends Authenticatable
         'quartier',
         'photo',
         'password',
+        'role_id',
     ];
 
     /**
@@ -67,5 +68,9 @@ public function commands()
 }
 
 
+public function role()
+{
+    return $this->belongsTo(Role::class);
+}
 
 }

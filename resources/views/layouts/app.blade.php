@@ -547,24 +547,22 @@
 
 
 
-    .brand{
-            width: 80%;
-            height: 130px;
-            align-items: center;
-            justify-content: center;
-            position: relative;
+    .brand {
+        width: 80%;
+        height: 130px;
+        align-items: center;
+        justify-content: center;
+        position: relative;
     }
-.brand-logo{
-    width: 100%;
-    height: auto;
-    position: absolute;
-    padding-top: 50px;
 
-    padding-bottom: 50px;
-}
+    .brand-logo {
+        width: 100%;
+        height: auto;
+        position: absolute;
+        padding-top: 50px;
 
-
-
+        padding-bottom: 50px;
+    }
 
 
 
@@ -573,177 +571,204 @@
 
 
 
-/* ===== Toasts Modern (light/dark via CSS variables) ===== */
-/* ===== Toast base ===== */
-.toast{
-  width: min(520px, calc(100vw - 28px));
-  pointer-events: auto;
-
-  display:flex;
-  align-items:flex-start;
-  gap:14px;
-
-  padding:16px 16px 14px 16px;
-  border-radius: 18px;
-  border: 1px solid var(--color-border-subtle);
-  background: var(--color-card);
-  color: var(--color-text);
-
-  box-shadow:
-    0 18px 50px rgba(0,0,0,.20),
-    0 2px 10px rgba(0,0,0,.12);
-
-  transform: translateY(-10px) scale(.98);
-  opacity: 0;
-  transition: transform .25s ease, opacity .25s ease, box-shadow .25s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.toast.show{
-  transform: translateY(0) scale(1);
-  opacity: 1;
-}
-
-.toast.hide{
-  transform: translateY(-10px) scale(.98);
-  opacity: 0;
-}
-
-/* Barre gauche + halo (plus visible) */
-.toast::before{
-  content:"";
-  position:absolute;
-  left:0; top:0; bottom:0;
-  width:6px;
-  border-radius: 18px 0 0 18px;
-  opacity: .95;
-}
-
-/* Barre de progression (5s) */
-.toast::after{
-  content:"";
-  position:absolute;
-  left:0; right:0; bottom:0;
-  height:4px;
-  opacity: .9;
-  transform-origin: left center;
-  transform: scaleX(1);
-}
-
-.toast.show::after{
-  animation: toastProgress 5s linear forwards;
-}
-
-@keyframes toastProgress{
-  from { transform: scaleX(1); }
-  to   { transform: scaleX(0); }
-}
-
-/* Layout interne */
-.toast-icon{
-  width: 46px; height: 46px;
-  border-radius: 16px;
-  display:flex; align-items:center; justify-content:center;
-  color: #fff;
-  flex: 0 0 auto;
-  font-size: 1.25rem;
-}
-
-.toast-title{
-  font-family: var(--font-family);
-  font-weight: 900;
-  letter-spacing: .3px;
-  font-size: 1.05rem;
-  line-height: 1.1;
-  margin-top: 2px;
-}
-
-.toast-msg{
-  margin-top: 4px;
-  font-size: .98rem;
-  color: var(--color-secondary-text);
-}
-
-.toast-close{
-  margin-left: auto;
-  width: 38px; height: 38px;
-  border-radius: 14px;
-  display:flex; align-items:center; justify-content:center;
-
-  border: 1px solid var(--color-border-subtle);
-  background: transparent;
-  color: var(--color-text);
-  opacity: .75;
-  cursor: pointer;
-
-  transition: transform .12s ease, opacity .2s ease, background .2s ease;
-}
-.toast-close:hover{
-  opacity: 1;
-  background: rgba(255,255,255,.06);
-  transform: translateY(-1px);
-}
-
-/* ===== SUCCESS (Vert premium) ===== */
-.toast-success{
-  border-color: rgba(34,197,94,.35);
-  background: linear-gradient(135deg,
-    rgba(34,197,94,.18),
-    rgba(255,255,255,0) 45%
-  ), var(--color-card);
-
-  box-shadow:
-    0 18px 50px rgba(0,0,0,.18),
-    0 0 0 2px rgba(34,197,94,.16),
-    0 16px 40px rgba(34,197,94,.10);
-}
-.toast-success::before{
-  background: linear-gradient(180deg, #22c55e, #16a34a);
-}
-.toast-success::after{
-  background: linear-gradient(90deg, #22c55e, #16a34a);
-}
-.toast-success .toast-icon{
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  box-shadow: 0 14px 30px rgba(34,197,94,.25);
-}
-.toast-success .toast-title{ color: #16a34a; }
-
-/* ===== ERROR (Rouge premium) ===== */
-.toast-error{
-  border-color: rgba(239,68,68,.35);
-  background: linear-gradient(135deg,
-    rgba(239,68,68,.16),
-    rgba(255,255,255,0) 45%
-  ), var(--color-card);
-
-  box-shadow:
-    0 18px 50px rgba(0,0,0,.18),
-    0 0 0 2px rgba(239,68,68,.14),
-    0 16px 40px rgba(239,68,68,.10);
-}
-.toast-error::before{
-  background: linear-gradient(180deg, #ef4444, #b91c1c);
-}
-.toast-error::after{
-  background: linear-gradient(90deg, #ef4444, #b91c1c);
-}
-.toast-error .toast-icon{
-  background: linear-gradient(135deg, #ef4444, #b91c1c);
-  box-shadow: 0 14px 30px rgba(239,68,68,.22);
-}
-.toast-error .toast-title{ color: #ef4444; }
-
-/* Dark mode: on augmente un peu la lisibilité */
-.dark-mode .toast{
-  box-shadow:
-    0 18px 55px rgba(0,0,0,.45),
-    0 2px 12px rgba(0,0,0,.35);
-}
 
 
-   </style>
+
+    /* ===== Toasts Modern (light/dark via CSS variables) ===== */
+    /* ===== Toast base ===== */
+    .toast {
+        width: min(520px, calc(100vw - 28px));
+        pointer-events: auto;
+
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+
+        padding: 16px 16px 14px 16px;
+        border-radius: 18px;
+        border: 1px solid var(--color-border-subtle);
+        background: var(--color-card);
+        color: var(--color-text);
+
+        box-shadow:
+            0 18px 50px rgba(0, 0, 0, .20),
+            0 2px 10px rgba(0, 0, 0, .12);
+
+        transform: translateY(-10px) scale(.98);
+        opacity: 0;
+        transition: transform .25s ease, opacity .25s ease, box-shadow .25s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .toast.show {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+
+    .toast.hide {
+        transform: translateY(-10px) scale(.98);
+        opacity: 0;
+    }
+
+    /* Barre gauche + halo (plus visible) */
+    .toast::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        border-radius: 18px 0 0 18px;
+        opacity: .95;
+    }
+
+    /* Barre de progression (5s) */
+    .toast::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 4px;
+        opacity: .9;
+        transform-origin: left center;
+        transform: scaleX(1);
+    }
+
+    .toast.show::after {
+        animation: toastProgress 5s linear forwards;
+    }
+
+    @keyframes toastProgress {
+        from {
+            transform: scaleX(1);
+        }
+
+        to {
+            transform: scaleX(0);
+        }
+    }
+
+    /* Layout interne */
+    .toast-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        flex: 0 0 auto;
+        font-size: 1.25rem;
+    }
+
+    .toast-title {
+        font-family: var(--font-family);
+        font-weight: 900;
+        letter-spacing: .3px;
+        font-size: 1.05rem;
+        line-height: 1.1;
+        margin-top: 2px;
+    }
+
+    .toast-msg {
+        margin-top: 4px;
+        font-size: .98rem;
+        color: var(--color-secondary-text);
+    }
+
+    .toast-close {
+        margin-left: auto;
+        width: 38px;
+        height: 38px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        border: 1px solid var(--color-border-subtle);
+        background: transparent;
+        color: var(--color-text);
+        opacity: .75;
+        cursor: pointer;
+
+        transition: transform .12s ease, opacity .2s ease, background .2s ease;
+    }
+
+    .toast-close:hover {
+        opacity: 1;
+        background: rgba(255, 255, 255, .06);
+        transform: translateY(-1px);
+    }
+
+    /* ===== SUCCESS (Vert premium) ===== */
+    .toast-success {
+        border-color: rgba(34, 197, 94, .35);
+        background: linear-gradient(135deg,
+                rgba(34, 197, 94, .18),
+                rgba(255, 255, 255, 0) 45%), var(--color-card);
+
+        box-shadow:
+            0 18px 50px rgba(0, 0, 0, .18),
+            0 0 0 2px rgba(34, 197, 94, .16),
+            0 16px 40px rgba(34, 197, 94, .10);
+    }
+
+    .toast-success::before {
+        background: linear-gradient(180deg, #22c55e, #16a34a);
+    }
+
+    .toast-success::after {
+        background: linear-gradient(90deg, #22c55e, #16a34a);
+    }
+
+    .toast-success .toast-icon {
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        box-shadow: 0 14px 30px rgba(34, 197, 94, .25);
+    }
+
+    .toast-success .toast-title {
+        color: #16a34a;
+    }
+
+    /* ===== ERROR (Rouge premium) ===== */
+    .toast-error {
+        border-color: rgba(239, 68, 68, .35);
+        background: linear-gradient(135deg,
+                rgba(239, 68, 68, .16),
+                rgba(255, 255, 255, 0) 45%), var(--color-card);
+
+        box-shadow:
+            0 18px 50px rgba(0, 0, 0, .18),
+            0 0 0 2px rgba(239, 68, 68, .14),
+            0 16px 40px rgba(239, 68, 68, .10);
+    }
+
+    .toast-error::before {
+        background: linear-gradient(180deg, #ef4444, #b91c1c);
+    }
+
+    .toast-error::after {
+        background: linear-gradient(90deg, #ef4444, #b91c1c);
+    }
+
+    .toast-error .toast-icon {
+        background: linear-gradient(135deg, #ef4444, #b91c1c);
+        box-shadow: 0 14px 30px rgba(239, 68, 68, .22);
+    }
+
+    .toast-error .toast-title {
+        color: #ef4444;
+    }
+
+    /* Dark mode: on augmente un peu la lisibilité */
+    .dark-mode .toast {
+        box-shadow:
+            0 18px 55px rgba(0, 0, 0, .45),
+            0 2px 12px rgba(0, 0, 0, .35);
+    }
+    </style>
 
     <!-- DataTables CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
@@ -756,7 +781,7 @@
     <div class="sidebar" id="sidebar">
         <!-- Logo et Titre -->
         <div class="brand">
-            
+
             <div class="brand-logo">
                 <div class="logo-text">
                     <img src="{{ asset('assets/images/logo_tracking.png') }}" alt="">
@@ -792,7 +817,8 @@
                             class="{{ request()->is('tracking_users') ? 'active' : '' }}">Utilisateurs</a></li>
                     <li><a href="{{ route('tracking.vehicles') ?? '#' }}"
                             class="{{ request()->is('tracking.vehicles') ? 'active' : '' }}">Véhicules</a></li>
-                    <li><a href="{{ route('trajets.index') }}" class="{{ request()->is('tracking.zones') ? 'active' : '' }}">Trajets</a></li>
+                    <li><a href="{{ route('trajets.index') }}"
+                            class="{{ request()->is('tracking.zones') ? 'active' : '' }}">Trajets</a></li>
                 </ul>
             </li>
 
@@ -808,6 +834,29 @@
                     class="{{ request()->routeIs('alerts.index') ? 'active' : '' }}">
                     <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
                     <span class="title">Alertes</span>
+                </a>
+            </li>
+            <li>
+                <a href="{{ route('gps_sim.index') ?? '#' }}" class="{{ request()->is('association*') ? 'active' : '' }}">
+                    <span class="icon">
+                        <i class="fas fa-sim-card"></i>
+                    </span>
+                    <span class="title">GPS et SIM</span>
+                </a>
+            </li>
+            <li>
+                <a href="{{ route('engine.action.index') ?? '#' }}" class="{{ request()->is('association*') ? 'active' : '' }}">
+                    <span class="icon">
+                        <i class="fas fa-power-off"></i>
+                    </span>
+                    <span class="title">Coupure Moteur</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="#" class="{{ request()->is('association*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-cog"></i></span>
+                    <span class="title">Paramètres</span>
                 </a>
             </li>
         </ul>
@@ -839,7 +888,8 @@
 
         <div class="flex-grow">
             <!-- Exemple de titre de page -->
-            <h1 class="text-xl font-bold font-orbitron hidden sm:block" style="color: var(--color-text); font-size: 2rem;">@yield('title',
+            <h1 class="text-xl font-bold font-orbitron hidden sm:block"
+                style="color: var(--color-text); font-size: 2rem;">@yield('title',
                 'Dashboard')</h1>
         </div>
 
@@ -869,7 +919,8 @@
                     id="user-menu-toggle">
                     <img src="https://placehold.co/36x36/F58220/ffffff?text=U" alt="Profile"
                         class="h-9 w-9 rounded-full object-cover border-2 border-primary">
-                    <span class="font-semibold hidden lg:block profile-text" style="color: var(--color-text);">{{ auth()->user()->prenom }} {{ auth()->user()->nom }}</span>
+                    <span class="font-semibold hidden lg:block profile-text"
+                        style="color: var(--color-text);">{{ auth()->user()->prenom }} {{ auth()->user()->nom }}</span>
                 </button>
 
                 <!-- Dropdown Utilisateur -->
@@ -900,38 +951,38 @@
         <!-- Contenu de la page -->
         <div class="p-8">
             <div class="page-content">
-     {{-- Toast container --}}
-<div id="toast-container" class="fixed top-5 right-5 z-[9999] space-y-3 pointer-events-none"></div>
+                {{-- Toast container --}}
+                <div id="toast-container" class="fixed top-5 right-5 z-[9999] space-y-3 pointer-events-none"></div>
 
-@if(session('success'))
-    <div class="toast toast-success pointer-events-auto" role="alert">
-        <div class="toast-icon">
-            <i class="fas fa-check-circle"></i>
-        </div>
-        <div class="toast-body">
-            <div class="toast-title">Succès</div>
-            <div class="toast-msg">{{ session('success') }}</div>
-        </div>
-        <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
-    </div>
-@endif
+                @if(session('success'))
+                <div class="toast toast-success pointer-events-auto" role="alert">
+                    <div class="toast-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="toast-body">
+                        <div class="toast-title">Succès</div>
+                        <div class="toast-msg">{{ session('success') }}</div>
+                    </div>
+                    <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
+                </div>
+                @endif
 
-@if(session('error'))
-    <div class="toast toast-error pointer-events-auto" role="alert">
-        <div class="toast-icon">
-            <i class="fas fa-exclamation-triangle"></i>
-        </div>
-        <div class="toast-body">
-            <div class="toast-title">Erreur</div>
-            <div class="toast-msg">{{ session('error') }}</div>
-        </div>
-        <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
-    </div>
-@endif
+                @if(session('error'))
+                <div class="toast toast-error pointer-events-auto" role="alert">
+                    <div class="toast-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="toast-body">
+                        <div class="toast-title">Erreur</div>
+                        <div class="toast-msg">{{ session('error') }}</div>
+                    </div>
+                    <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
+                </div>
+                @endif
 
                 @yield('content')
 
-                
+
             </div>
 
 
@@ -952,7 +1003,8 @@
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo&callback=initMap" async></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo&callback=initMap"
+        async></script>
 
     <script>
     $(function() { // équivalent de $(document).ready()
@@ -1146,29 +1198,29 @@
 
 
 
-   <script>
-document.addEventListener('DOMContentLoaded', () => {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
 
-  const toasts = Array.from(document.querySelectorAll('.toast'));
-  toasts.forEach(t => container.appendChild(t));
+        const toasts = Array.from(document.querySelectorAll('.toast'));
+        toasts.forEach(t => container.appendChild(t));
 
-  toasts.forEach(toast => {
-    requestAnimationFrame(() => toast.classList.add('show'));
+        toasts.forEach(toast => {
+            requestAnimationFrame(() => toast.classList.add('show'));
 
-    const close = () => {
-      toast.classList.remove('show');
-      toast.classList.add('hide');
-      setTimeout(() => toast.remove(), 260);
-    };
+            const close = () => {
+                toast.classList.remove('show');
+                toast.classList.add('hide');
+                setTimeout(() => toast.remove(), 260);
+            };
 
-    toast.querySelector('.toast-close')?.addEventListener('click', close);
+            toast.querySelector('.toast-close')?.addEventListener('click', close);
 
-    setTimeout(close, 5000); // ✅ 5 secondes
-  });
-});
-</script>
+            setTimeout(close, 5000); // ✅ 5 secondes
+        });
+    });
+    </script>
 
 </body>
 

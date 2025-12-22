@@ -496,4 +496,117 @@ class GpsControlService
             ],
         ];
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+ * 5) DEVICE LIST (tous les GPS du compte)
+ * ========================================================= */
+
+/**
+ * Convertit la réponse { data:[{key:{field:index}, records:[[...],[...]]}] }
+ * en tableau d'objets associatifs.
+ */
+private function extractKeyedRecords(array $resp): array
+{
+    if (!$this->isProviderSuccess($resp)) {
+        return [];
+    }
+
+    $block = $resp['data'][0] ?? null;
+    $key = $block['key'] ?? null;
+    $records = $block['records'] ?? null;
+
+    if (!is_array($key) || !is_array($records)) {
+        return [];
+    }
+
+    $out = [];
+    foreach ($records as $row) {
+        if (!is_array($row)) continue;
+
+        $item = [];
+        foreach ($key as $field => $idx) {
+            $item[$field] = $row[$idx] ?? null;
+        }
+        $out[] = $item;
+    }
+
+    return $out;
+}
+
+/**
+ * Liste les GPS du compte (unité courante) => sans sous-unités.
+ */
+public function getAccountDeviceList(): array
+{
+    $resp = $this->callGetDate('getDeviceList', [], true);
+
+    if (!$this->isProviderSuccess($resp)) {
+        return [];
+    }
+
+    // ✅ Cas 1: data = liste d'objets [{objectid, macid, ...}, ...]
+    if (isset($resp['data']) && is_array($resp['data'])) {
+        $first = $resp['data'][0] ?? null;
+        if (is_array($first) && (array_key_exists('objectid', $first) || array_key_exists('macid', $first))) {
+            return $resp['data'];
+        }
+    }
+
+    // ✅ Cas 2: data[0] = { key:{...}, records:[[...],[...]] }
+    return $this->extractKeyedRecords($resp);
+}
+
+
+/**
+ * Liste les GPS d'une sous-unité (si tu as des subordinates).
+ */
+public function getSubUnitDeviceList(string $unitId, string $mapType = ''): array
+{
+    $payload = [
+        'id' => trim($unitId),
+        'mapType' => $mapType, // '' = coordonnées originales (WGS84 souvent)
+    ];
+
+    $resp = $this->callGetDate('getDeviceListByCustomId', $payload, true);
+    return $this->extractKeyedRecords($resp);
+}
+
+/**
+ * Version RAW (utile pour debug si ça renvoie [])
+ */
+public function getAccountDeviceListRaw(): array
+{
+    return $this->callGetDate('getDeviceList', [], true);
+}
+
+public function getSubUnitDeviceListRaw(string $unitId, string $mapType = ''): array
+{
+    $payload = ['id' => trim($unitId), 'mapType' => $mapType];
+    return $this->callGetDate('getDeviceListByCustomId', $payload, true);
+}
+
+
 }

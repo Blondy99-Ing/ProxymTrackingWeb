@@ -15,6 +15,7 @@ use App\Http\Controllers\Users\ProfileController;
 use App\Http\Controllers\Alert\AlertController;
 use App\Http\Controllers\Trajets\TrajetController;
 use App\Http\Controllers\Gps\ControlGpsController;
+use App\Http\Controllers\GpsSimController;
 
 
 
@@ -42,6 +43,9 @@ Route::middleware(['auth:web'])->group(function () {
     // Routes protégées par authentification
 
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    // 🔁 API JSON pour le dashboard temps réel
+Route::get('/api/fleet-snapshot', [DashboardController::class, 'fleetSnapshot'])
+    ->name('fleet.snapshot');
 
     // Afficher les utilisateurs 
 Route::prefix('tracking')->group(function() {
@@ -95,6 +99,8 @@ Route::get('/voitures/{id}/geofence', [VoitureController::class, 'detailsVehicul
     ->name('tracking.vehicles.geofence');
 
 Route::prefix('voitures')->group(function () {
+         Route::get('engine/action', [ControlGpsController::class, 'index'])
+            ->name('engine.action.index');
         Route::get('engine-status/batch', [ControlGpsController::class, 'engineStatusBatch'])
             ->name('voitures.engineStatusBatch');
 
@@ -106,9 +112,7 @@ Route::prefix('voitures')->group(function () {
     });
 
 
-    // API JSON pour les positions de la flotte
-Route::get('/api/fleet-positions', [DashboardController::class, 'fleetPositions'])
-    ->name('fleet.positions');
+   
 
 
 
@@ -168,6 +172,11 @@ Route::get('/trajets', [TrajetController::class, 'index'])->name('trajets.index'
 Route::get('/voitures/{id}/trajets', [TrajetController::class, 'byVoiture'])->name('voitures.trajets');
 
 
+
+// route pour la gestion des SIM dans les GPS
+Route::get('/gps-sim', [GpsSimController::class, 'index'])->name('gps_sim.index');
+Route::post('/gps-sim/sync', [GpsSimController::class, 'syncFromAccount'])->name('gps_sim.sync');
+Route::patch('/gps-sim/{simGps}/sim', [GpsSimController::class, 'updateSim'])->name('gps_sim.sim.update');
 
 
 
