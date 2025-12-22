@@ -34,6 +34,7 @@ class DashboardController extends Controller
 
                 $users = $voiture?->utilisateur
                     ?->map(fn ($u) => trim(($u->prenom ?? '') . ' ' . ($u->nom ?? '')))
+                    ->filter()
                     ->implode(', ');
 
                 return [
@@ -46,7 +47,7 @@ class DashboardController extends Controller
                 ];
             });
 
-        // 📌 Snapshot complet flotte : position + statut moteur + statut GPS
+        // 📌 Snapshot complet flotte : position + statut moteur + statut GPS + lien profil user
         $vehicles = $this->buildFleetSnapshot();
 
         return view('dashboards.index', compact(
@@ -72,6 +73,7 @@ class DashboardController extends Controller
      * - associations utilisateur
      * - statut moteur (CUT / ACTIVE)
      * - statut GPS (online/offline)
+     * - user_id + user_profile_url (pour bouton “voir profil”)
      */
     private function buildFleetSnapshot()
     {
@@ -88,14 +90,21 @@ class DashboardController extends Controller
                 $lat = floatval($loc->latitude);
                 $lon = floatval($loc->longitude);
 
-                $users = $v->utilisateur
-                    ? $v->utilisateur
+                // 👤 Utilisateurs associés
+                $usersCollection = $v->utilisateur;
+                $users = $usersCollection
+                    ? $usersCollection
                         ->map(fn ($u) => trim(($u->prenom ?? '') . ' ' . ($u->nom ?? '')))
                         ->filter()
                         ->implode(', ')
                     : null;
 
-                // 💡 Décodage moteur via le même service que ControlGpsController
+                // ✅ Premier user (pour redirection vers profil)
+                $firstUser = $usersCollection?->first();
+                $userId = $firstUser?->id;
+                $userProfileUrl = $userId ? route('users.profile', ['id' => $userId]) : null;
+
+                // 💡 Décodage moteur via le service
                 $decoded = $this->gps->decodeEngineStatus($loc->status ?? '');
                 $engineState = $decoded['engineState'] ?? 'UNKNOWN';
                 $cut = ($engineState === 'CUT');
@@ -109,10 +118,16 @@ class DashboardController extends Controller
                     'immatriculation' => $v->immatriculation,
                     'marque'          => $v->marque,
                     'model'           => $v->model,
+
                     'users'           => $users,
+
+                    // ✅ AJOUTS POUR LE BOUTON PROFIL
+                    'user_id'          => $userId,
+                    'user_profile_url' => $userProfileUrl,
+
                     'lat'             => $lat,
                     'lon'             => $lon,
-                    'status'          => 'En mouvement', // statut "logique" de la voiture
+                    'status'          => 'En mouvement',
 
                     'engine' => [
                         'cut'         => $cut,

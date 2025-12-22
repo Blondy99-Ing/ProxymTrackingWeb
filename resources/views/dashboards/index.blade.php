@@ -108,15 +108,36 @@
                                     <p class="text-xs font-semibold truncate" style="color: var(--color-text);">
                                         {{ $v['immatriculation'] }}
                                     </p>
+
                                     @if(!empty($v['marque']) || !empty($v['model']))
                                         <p class="text-[11px] text-secondary truncate">
                                             {{ $v['marque'] ?? '' }} {{ $v['model'] ?? '' }}
                                         </p>
                                     @endif
+
                                     <p class="text-[11px] mt-1 text-secondary line-clamp-1">
                                         <i class="fas fa-user mr-1 text-[10px]"></i>
                                         {{ $v['users'] ?: 'Aucun utilisateur associé' }}
                                     </p>
+                                </div>
+
+                                {{-- ✅ Bouton profil utilisateur --}}
+                                <div class="shrink-0">
+                                    @if(!empty($v['user_profile_url']))
+                                        <a href="{{ $v['user_profile_url'] }}"
+                                           class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 p-2"
+                                           title="Voir les détails utilisateur"
+                                           onclick="event.stopPropagation();">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    @else
+                                        <button type="button"
+                                                class="text-gray-400 p-2 cursor-not-allowed"
+                                                title="Aucun utilisateur associé"
+                                                onclick="event.stopPropagation();">
+                                            <i class="fas fa-eye-slash"></i>
+                                        </button>
+                                    @endif
                                 </div>
                             </div>
 
@@ -217,7 +238,7 @@
 let map;
 let markersById = {};
 let infoWindowsById = {};
-let vehiclesData = @json($vehicles); // contient déjà engine + gps
+let vehiclesData = @json($vehicles); // contient déjà engine + gps + user_profile_url
 
 // 1) Init carte
 function initFleetMap() {
@@ -309,6 +330,15 @@ function buildInfoWindowContent(vehicle) {
         }
     }
 
+    // ✅ Lien profil (si dispo)
+    const profileLink = vehicle.user_profile_url
+        ? `<div style="margin-top:6px;">
+             <a href="${vehicle.user_profile_url}" style="color:#3b82f6;text-decoration:underline;">
+               Voir profil utilisateur
+             </a>
+           </div>`
+        : '';
+
     return `
         <div style="font-size:12px;">
             <b>${vehicle.immatriculation}</b><br>
@@ -321,6 +351,7 @@ function buildInfoWindowContent(vehicle) {
                 <i class="fas fa-satellite-dish" style="margin-right:4px;color:${gpsColor};"></i>
                 <span style="color:${gpsColor};font-weight:600;">${gpsLabel}</span>
             </span>
+            ${profileLink}
         </div>
     `;
 }
