@@ -174,7 +174,7 @@
 
                 <tbody>
                     @forelse ($trajets as $trajet)
-                        <tr class="hover:bg-hover-subtle transition">
+                        <tr  id="trajet-{{ $trajet->id }}" class="hover:bg-hover-subtle transition">
                             <td class="font-semibold text-primary">
                                 {{ $trajet->voiture->immatriculation ?? 'N/A' }}
                             </td>
@@ -212,10 +212,10 @@
                             </td>
 
                             <td>
-                                <a href="{{ route('voitures.trajets', ['id' => $trajet->vehicle_id, 'focus_trajet_id' => $trajet->id] + request()->query()) }}">
-                                    <i class="fas fa-eye mr-1"></i> Détails
+                                <a href="{{ route('voitures.trajets', ['id' => $trajet->vehicle_id] + request()->query() + ['focus_trajet_id' => $trajet->id]) }}"
+                                class="text-primary hover:text-primary-dark font-medium">
+                                <i class="fas fa-eye mr-1"></i> Détails
                                 </a>
-
 
                             </td>
                         </tr>
