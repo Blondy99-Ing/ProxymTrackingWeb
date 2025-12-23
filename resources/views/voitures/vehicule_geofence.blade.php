@@ -116,103 +116,172 @@
 
 @push('scripts')
 <script>
-    // ====== Données envoyées par le contrôleur ======
-    const vehicle = {
-        id: {{ $voiture->id }},
-        immat: @json($voiture->immatriculation),
-        model: @json($voiture->marque . ' ' . $voiture->model),
-        lat: {{ $voiture->latestLocation->latitude ?? 0 }},
-        lng: {{ $voiture->latestLocation->longitude ?? 0 }},
-        status: @json($voiture->latestLocation->status ?? 'Inconnu'),
-        photo: @json($voiture->photo ? asset('storage/'.$voiture->photo) : 'https://placehold.co/600x400'),
-    };
+  // ====== Données envoyées par le contrôleur ======
+  const vehicle = {
+    id: {{ $voiture->id }},
+    immat: @json($voiture->immatriculation),
+    model: @json($voiture->marque . ' ' . $voiture->model),
+    lat: {{ $voiture->latestLocation->latitude ?? 0 }},
+    lng: {{ $voiture->latestLocation->longitude ?? 0 }},
+    status: @json($voiture->latestLocation->status ?? 'Inconnu'),
+    photo: @json($voiture->photo ? asset('storage/'.$voiture->photo) : 'https://placehold.co/600x400')
+  };
 
-    // geofenceCoords = array de [lng, lat] passé par le contrôleur
-    const geofenceCoords = @json($geofenceCoords ?? []);
+  // geofenceCoords = array de [lng, lat] passé par le contrôleur
+  const geofenceCoords = @json($geofenceCoords ?? []);
 
-    let map;
-    let marker;
-    let geofencePolygon;
+  // Icône véhicule
+  const carIconUrl = @json(asset('assets/icons/car_icon.png'));
 
-    function initMap() {
-        const hasPosition = vehicle.lat !== 0 && vehicle.lng !== 0;
+  let map;
+  let marker;
+  let geofencePolygon;
+  let infoWindow;
 
-        map = new google.maps.Map(document.getElementById('userMap'), {
-            center: hasPosition ? {lat: vehicle.lat, lng: vehicle.lng} : {lat: 4.05, lng: 9.7},
-            zoom: hasPosition ? 14 : 8
-        });
+  // ✅ Paramètres "follow vehicle"
+  const FOLLOW_ENABLED = true;     // toujours centrer
+  const FOLLOW_INTERVAL_MS = 1500; // fréquence de recentrage
 
-        // Marqueur du véhicule
-        if (hasPosition) {
-            marker = new google.maps.Marker({
-                position: {lat: vehicle.lat, lng: vehicle.lng},
-                map: map,
-                title: `${vehicle.model} (${vehicle.immat})`,
-            });
+  function isValidLatLng(lat, lng) {
+    return Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
+  }
 
-            const infowindow = new google.maps.InfoWindow({
-                content: `
-                    <div style="font-size:14px;">
-                        <b>${vehicle.model} (${vehicle.immat})</b><br>
-                        Statut: ${vehicle.status}<br>
-                        Lat: ${vehicle.lat}<br>
-                        Lng: ${vehicle.lng}
-                    </div>
-                `
-            });
+  function getVehicleLatLng() {
+    return { lat: Number(vehicle.lat), lng: Number(vehicle.lng) };
+  }
 
-            marker.addListener('click', ()=>infowindow.open(map, marker));
-        }
+  function centerOnVehicle(forceZoom = false) {
+    if (!map || !marker) return;
 
-        // Geofence (polygone)
-        if (geofenceCoords && geofenceCoords.length > 0) {
-            const path = geofenceCoords.map(function(pt) {
-                // pt = [lng, lat]
-                return {lat: pt[1], lng: pt[0]};
-            });
+    const pos = marker.getPosition();
+    if (!pos) return;
 
-            geofencePolygon = new google.maps.Polygon({
-                paths: path,
-                strokeColor: '#F58220',
-                strokeOpacity: 0.9,
-                strokeWeight: 2,
-                fillColor: '#F58220',
-                fillOpacity: 0.15,
-                map: map
-            });
+    // recentrage doux
+    map.panTo(pos);
 
-            // Ajuster la carte pour englober le geofence (et le marker si présent)
-            const bounds = new google.maps.LatLngBounds();
-            path.forEach(function(p) { bounds.extend(p); });
-            if (hasPosition) {
-                bounds.extend({lat: vehicle.lat, lng: vehicle.lng});
-            }
-            map.fitBounds(bounds);
-        }
+    // zoom mini pour rester lisible
+    if (forceZoom) {
+      map.setZoom(14);
+    } else {
+      const z = map.getZoom();
+      if (typeof z === "number" && z < 14) map.setZoom(14);
     }
+  }
 
-    // --- Modal image ---
-    const imageModal = document.getElementById('imageModal');
-    const modalImage = document.getElementById('modalImage');
-    const closeModalBtn = document.getElementById('closeModalBtn');
+  // (optionnel) si un jour tu veux mettre à jour la position via AJAX/polling
+  function updateVehiclePosition(lat, lng, status = null) {
+    vehicle.lat = lat;
+    vehicle.lng = lng;
+    if (status !== null) vehicle.status = status;
 
-    window.openImageModal = function(url){
-        modalImage.src = url;
-        imageModal.classList.remove('hidden');
-        imageModal.classList.add('flex');
-        document.body.style.overflow = 'hidden';
+    if (marker) {
+      marker.setPosition({ lat, lng });
+      if (FOLLOW_ENABLED) centerOnVehicle(false);
     }
+  }
 
-    closeModalBtn.addEventListener('click', function(){
-        imageModal.classList.add('hidden');
-        imageModal.classList.remove('flex');
-        document.body.style.overflow = '';
+  // IMPORTANT: le callback Google Maps cherche initMap dans window
+  window.initMap = function initMap() {
+    const hasPosition = isValidLatLng(vehicle.lat, vehicle.lng);
+    const fallbackCenter = { lat: 4.05, lng: 9.7 };
+
+    // Création map
+    map = new google.maps.Map(document.getElementById("userMap"), {
+      center: hasPosition ? getVehicleLatLng() : fallbackCenter,
+      zoom: hasPosition ? 14 : 8,
+      gestureHandling: "greedy"
     });
 
-    imageModal.addEventListener('click', (e)=>{
-        if(e.target.id === 'imageModal'){
-            closeModalBtn.click();
+    // Marker véhicule
+    if (hasPosition) {
+      marker = new google.maps.Marker({
+        position: getVehicleLatLng(),
+        map,
+        title: `${vehicle.model} (${vehicle.immat})`,
+        icon: {
+          url: carIconUrl,
+          scaledSize: new google.maps.Size(72, 72),
+          anchor: new google.maps.Point(36, 72) // ✅ bas-centre pour une icône 72x72
         }
-    });
+      });
+
+      infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div style="font-size:14px;">
+            <b>${vehicle.model} (${vehicle.immat})</b><br>
+            Statut: ${vehicle.status}<br>
+            Lat: ${vehicle.lat}<br>
+            Lng: ${vehicle.lng}
+          </div>
+        `
+      });
+
+      marker.addListener("click", () => infoWindow.open(map, marker));
+
+      // ✅ centre immédiatement
+      centerOnVehicle(true);
+
+      // ✅ recentrage régulier (toujours centré)
+      if (FOLLOW_ENABLED) {
+        setInterval(() => centerOnVehicle(false), FOLLOW_INTERVAL_MS);
+      }
+
+      // ✅ recentrer si l'utilisateur redimensionne la fenêtre
+      window.addEventListener("resize", () => {
+        if (!map) return;
+        google.maps.event.trigger(map, "resize");
+        centerOnVehicle(false);
+      });
+    }
+
+    // Geofence (polygone)
+    if (geofenceCoords && geofenceCoords.length > 0) {
+      const path = geofenceCoords.map((pt) => ({ lat: pt[1], lng: pt[0] }));
+
+      geofencePolygon = new google.maps.Polygon({
+        paths: path,
+        strokeColor: "#F58220",
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        fillColor: "#F58220",
+        fillOpacity: 0.15,
+        map
+      });
+
+      // Si pas de position véhicule, on fit sur le geofence
+      if (!hasPosition) {
+        const bounds = new google.maps.LatLngBounds();
+        path.forEach((p) => bounds.extend(p));
+        map.fitBounds(bounds);
+      }
+      // Si position véhicule, on NE laisse PAS fitBounds déplacer la vue
+      // (tu veux toujours centré sur le véhicule)
+    }
+  };
+
+  // --- Modal image ---
+  const imageModal = document.getElementById("imageModal");
+  const modalImage = document.getElementById("modalImage");
+  const closeModalBtn = document.getElementById("closeModalBtn");
+
+  window.openImageModal = function (url) {
+    modalImage.src = url;
+    imageModal.classList.remove("hidden");
+    imageModal.classList.add("flex");
+    document.body.style.overflow = "hidden";
+  };
+
+  closeModalBtn.addEventListener("click", function () {
+    imageModal.classList.add("hidden");
+    imageModal.classList.remove("flex");
+    document.body.style.overflow = "";
+  });
+
+  imageModal.addEventListener("click", (e) => {
+    if (e.target.id === "imageModal") {
+      closeModalBtn.click();
+    }
+  });
 </script>
+
 @endpush

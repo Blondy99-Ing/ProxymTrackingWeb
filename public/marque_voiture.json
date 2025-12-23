@@ -1,0 +1,405 @@
+{
+  "meta": {
+    "note": "Liste non exhaustive. Modèles fournis = exemples courants. Ajoute tes modèles par marque pour compléter.",
+    "format": "brand -> models[]"
+  },
+  "data": [
+    {
+      "brand": "ALFA ROMEO",
+      "models": ["Giulia", "Stelvio", "Tonale", "Giulietta", "159", "Mito"]
+    },
+    {
+      "brand": "AUDI",
+      "models": ["A3", "A4", "A6", "A8", "Q3", "Q5", "Q7", "Q8", "TT", "RS3", "RS6"]
+    },
+    {
+      "brand": "BMW",
+      "models": ["1 Series", "3 Series", "5 Series", "7 Series", "X1", "X3", "X5", "X6", "X7", "i4", "iX"]
+    },
+    {
+      "brand": "CHEVROLET",
+      "models": ["Spark", "Aveo", "Cruze", "Malibu", "Impala", "Trax", "Equinox", "Tahoe", "Suburban", "Silverado"]
+    },
+    {
+      "brand": "CHRYSLER",
+      "models": ["300", "Pacifica", "Voyager"]
+    },
+    {
+      "brand": "CITROEN",
+      "models": ["C1", "C3", "C4", "C5", "C3 Aircross", "C5 Aircross", "Berlingo", "Jumpy", "Jumper"]
+    },
+    {
+      "brand": "DACIA",
+      "models": ["Sandero", "Logan", "Duster", "Jogger", "Dokker", "Lodgy", "Spring"]
+    },
+    {
+      "brand": "DAEWOO",
+      "models": ["Matiz", "Lanos", "Nubira", "Leganza"]
+    },
+    {
+      "brand": "DAIHATSU",
+      "models": ["Terios", "Sirion", "Mira", "Cuore", "Charade", "Hijet"]
+    },
+    {
+      "brand": "DODGE",
+      "models": ["Charger", "Challenger", "Durango", "Journey", "Caravan", "Ram (old)"]
+    },
+    {
+      "brand": "FERRARI",
+      "models": ["488", "F8 Tributo", "Roma", "Portofino", "812", "SF90 Stradale", "Purosangue"]
+    },
+    {
+      "brand": "FIAT",
+      "models": ["500", "Panda", "Tipo", "Punto", "Doblo", "Fiorino", "Ducato"]
+    },
+    {
+      "brand": "FORD",
+      "models": ["Fiesta", "Focus", "Fusion/Mondeo", "Mustang", "Ranger", "Everest", "Explorer", "Escape/Kuga", "F-150"]
+    },
+    {
+      "brand": "HONDA",
+      "models": ["Civic", "Accord", "City", "Fit/Jazz", "CR-V", "HR-V", "Pilot", "Ridgeline"]
+    },
+    {
+      "brand": "HYUNDAI",
+      "models": ["i10", "i20", "i30", "Elantra", "Sonata", "Tucson", "Santa Fe", "Palisade", "Creta"]
+    },
+    {
+      "brand": "INFINITI",
+      "models": ["Q50", "Q60", "QX50", "QX60", "QX80"]
+    },
+    {
+      "brand": "ISUZU",
+      "models": ["D-Max", "MU-X", "Trooper", "N-Series", "F-Series"]
+    },
+    {
+      "brand": "IVECO",
+      "models": ["Daily", "Eurocargo", "S-Way", "Trakker"]
+    },  
+    {
+      "brand": "JAGUAR",
+      "models": [
+        "SS 1",
+        "SS 90",
+        "SS Jaguar 100",
+        "Jaguar 2.4 Litre",
+        "Jaguar 3.4 Litre",
+        "Jaguar 3.8 Litre",
+        "Jaguar 240",
+        "Jaguar 340",
+        "Jaguar 420",
+        "Jaguar 420G",
+        "Jaguar Mark 1",
+        "Jaguar Mark 2",
+        "Jaguar Mark IV",
+        "Jaguar Mark V",
+        "Jaguar Mark VII",
+        "Jaguar Mark VIII",
+        "Jaguar Mark IX",
+        "Jaguar Mark X",
+        "Jaguar S-Type (1963)",
+        "Jaguar S-Type (1999)",
+        "Jaguar Sovereign",
+        "Jaguar E-Type",
+        "Jaguar XJ",
+        "XJ (XJ40)",
+        "XJ (X300)",
+        "XJ (X308)",
+        "XJ (X350)",
+        "XJ (X358)",
+        "XJ (X351)",
+        "XJ (electric)",
+        "Jaguar XJS",
+        "Jaguar XK120",
+        "Jaguar XK140",
+        "Jaguar XK150",
+        "Jaguar XK",
+        "XK (X100)",
+        "XK (X150)",
+        "Jaguar XKSS",
+        "Jaguar X-Type",
+        "Jaguar XE",
+        "Jaguar XF",
+        "XF (X250)",
+        "XF (X260)",
+        "Jaguar F-Type",
+        "Jaguar E-Pace",
+        "Jaguar F-Pace",
+        "Jaguar I-Pace",
+        "Jaguar XJ220",
+        "Jaguar C-Type",
+        "Jaguar D-Type",
+        "Jaguar XJ13",
+        "Jaguar XJR sportscars",
+        "Jaguar XJR-5",
+        "Jaguar XJR-6",
+        "Jaguar XJR-7",
+        "Jaguar XJR-8",
+        "Jaguar XJR-9",
+        "Jaguar XJR-10",
+        "Jaguar XJR-11",
+        "Jaguar XJR-12",
+        "Jaguar XJR-14",
+        "Jaguar XJR-15",
+        "Jaguar XJR-16",
+        "Jaguar XJR-17"
+      ]
+    },
+    {
+      "brand": "JEEP",
+      "models": [
+        "Avenger",
+        "Compass",
+        "Commander",
+        "Meridian",
+        "Cherokee",
+        "Grand Cherokee",
+        "Grand Cherokee L",
+        "Gladiator",
+        "Renegade",
+        "Recon",
+        "Wagoneer",
+        "Wagoneer L",
+        "Grand Wagoneer",
+        "Grand Wagoneer L",
+        "Wagoneer S",
+        "Wrangler",
+        "Wrangler Unlimited",
+        "CJ (series)",
+        "CJ-2A",
+        "CJ-3A",
+        "CJ-3B",
+        "CJ-5",
+        "CJ-5A \"Tuxedo Park\"",
+        "CJ-6",
+        "CJ-6A \"Tuxedo Park\"",
+        "CJ-7",
+        "CJ-8 \"Scrambler\"",
+        "CJ-10",
+        "CJ-10A",
+        "Jeepster",
+        "Jeepster Commando",
+        "DJ (Dispatcher) series",
+        "Forward Control (FC) series",
+        "FJ series",
+        "Wagoneer (classic)",
+        "Grand Wagoneer (classic)",
+        "Cherokee (classic)",
+        "Comanche",
+        "Liberty",
+        "Patriot",
+        "Commander (classic)",
+        "Grand Cherokee (earlier generations)",
+        "Wrangler (earlier generations)"
+      ]
+    },
+    {
+      "brand": "JETOUR",
+      "models": [
+        "Jetour Ice Cream",
+        "Jetour X70",
+        "Jetour X70S",
+        "Jetour X70M",
+        "Jetour X70 Plus",
+        "Jetour X70 Pro",
+        "Jetour X70 Coupé",
+        "Jetour X90",
+        "Jetour X90 Plus",
+        "Jetour X95",
+        "Jetour Dashing",
+        "Jetour Traveller",
+        "Jetour T1",
+        "Jetour T2",
+        "Jetour T2 i-DM",
+        "Jetour Shanhai L9",
+        "Jetour Shanhai L6",
+        "Jetour Shanhai T-L",
+        "T2 (sur certains marchés)"
+      ]
+    },
+    {
+      "brand": "KIA",
+      "models": ["Picanto", "Rio", "Ceed", "K5/Optima", "Sportage", "Sorento", "Seltos", "Carnival", "Telluride"]
+    },
+    {
+      "brand": "LADA",
+      "models": ["Niva", "Vesta", "Granta", "Largus"]
+    },
+    {
+      "brand": "LANCIA",
+      "models": ["Ypsilon", "Delta", "Thema"]
+    },
+    {
+      "brand": "LAND ROVER",
+      "models": ["Defender", "Discovery", "Discovery Sport", "Range Rover", "Range Rover Sport", "Range Rover Evoque", "Range Rover Velar"]
+    },
+    {
+      "brand": "LDV",
+      "models": ["V80", "G10", "T60", "Deliver 9"]
+    },
+    {
+      "brand": "LEXUS",
+      "models": ["IS", "ES", "GS", "LS", "NX", "RX", "GX", "LX", "UX"]
+    },
+    {
+      "brand": "MAZDA",
+      "models": ["Mazda2", "Mazda3", "Mazda6", "CX-3", "CX-5", "CX-9", "BT-50", "MX-5"]
+    },
+    {
+      "brand": "MERCEDES",
+      "models": ["A-Class", "C-Class", "E-Class", "S-Class", "GLA", "GLC", "GLE", "GLS", "G-Class", "Sprinter", "Vito"]
+    },
+    {
+      "brand": "MG",
+      "models": ["MG3", "MG5", "MG6", "ZS", "HS", "RX5", "MG4"]
+    },
+    {
+      "brand": "MINI",
+      "models": ["Cooper", "Countryman", "Clubman", "Paceman"]
+    },
+    {
+      "brand": "MITSUBISHI",
+      "models": ["Lancer", "ASX", "Outlander", "Pajero", "Pajero Sport/Montero Sport", "L200", "Eclipse Cross"]
+    },
+    {
+      "brand": "NISSAN",
+      "models": ["Micra", "Sentra", "Altima", "Maxima", "X-Trail/Rogue", "Qashqai", "Patrol", "Navara", "Juke"]
+    },
+    {
+      "brand": "OPEL",
+      "models": ["Corsa", "Astra", "Insignia", "Mokka", "Grandland", "Zafira", "Vivaro"]
+    },
+    {
+      "brand": "PEUGEOT",
+      "models": ["206", "207", "208", "301", "306", "307", "308", "407", "508", "2008", "3008", "5008", "Partner", "Boxer"]
+    },
+    {
+      "brand": "PORSCHE",
+      "models": ["911", "Cayenne", "Macan", "Panamera", "Taycan", "Boxster", "Cayman"]
+    },
+    {
+      "brand": "PROTON",
+      "models": ["Saga", "Persona", "Iriz", "X50", "X70", "Exora"]
+    },
+    {
+      "brand": "RENAULT",
+      "models": ["Clio", "Megane", "Talisman", "Captur", "Kadjar", "Koleos", "Kangoo", "Trafic", "Master", "Duster (selon marchés)"]
+    },
+    {
+      "brand": "ROVER",
+      "models": ["25", "45", "75", "200", "400"]
+    },
+    {
+      "brand": "SAAB",
+      "models": ["9-3", "9-5", "900", "9000"]
+    },
+    {
+      "brand": "SEAT",
+      "models": ["Ibiza", "Leon", "Toledo", "Ateca", "Arona", "Tarraco"]
+    },
+    {
+      "brand": "SKODA",
+      "models": ["Fabia", "Octavia", "Superb", "Rapid", "Kodiaq", "Karoq", "Kamiq"]
+    },
+    {
+      "brand": "SMART",
+      "models": ["Fortwo", "Forfour"]
+    },
+    {
+      "brand": "SSANGYONG",
+      "models": ["Rexton", "Korando", "Tivoli", "Musso", "Actyon"]
+    },
+    {
+      "brand": "SUBARU",
+      "models": ["Impreza", "Legacy", "Forester", "Outback", "XV/Crosstrek", "WRX"]
+    },
+    {
+      "brand": "SUZUKI",
+      "models": ["Alto", "Swift", "Baleno", "Celerio", "Vitara", "Jimny", "S-Cross"]
+    },
+    {
+      "brand": "TATA",
+      "models": ["Indica", "Tiago", "Tigor", "Nexon", "Harrier", "Safari"]
+    },
+    {
+      "brand": "TESLA",
+      "models": ["Model S", "Model 3", "Model X", "Model Y", "Cybertruck"]
+    },
+    {
+  "brand": "TOYOTA",
+  "models": [
+    "4Runner",
+    "Alphard",
+    "Auris",
+    "Avalon",
+    "Avanza",
+    "Aygo",
+    "bZ4X",
+    "C-HR",
+    "Camry",
+    "Coaster",
+    "Corolla",
+    "Corolla Cross",
+    "Cressida",
+    "Crown",
+    "Dyna",
+    "FJ Cruiser",
+    "Fortuner",
+    "GR86",
+    "Grand Highlander",
+    "Harrier",
+    "HiAce",
+    "Highlander",
+    "Hilux",
+    "Innova",
+    "iQ",
+    "Land Cruiser",
+    "Land Cruiser Prado",
+    "LiteAce",
+    "Mark II",
+    "Mirai",
+    "Noah",
+    "Passo",
+    "Picnic",
+    "Platz",
+    "Prado",
+    "Previa",
+    "Prius",
+    "Probox",
+    "RAV4",
+    "Rush",
+    "Sequoia",
+    "Sienna",
+    "Starlet",
+    "Supra",
+    "Tacoma",
+    "Tercel",
+    "Tundra",
+    "Urban Cruiser",
+    "Vanguard",
+    "Venza",
+    "Vitz",
+    "Voxy",
+    "Yaris"
+  ]
+ 
+}
+,
+    {
+      "brand": "TRIUMPH",
+      "models": ["Bonneville", "Tiger", "Street Triple", "Speed Triple", "Rocket 3"]
+    },
+    {
+      "brand": "TVR",
+      "models": ["Chimaera", "Cerbera", "Tuscan", "Griffith"]
+    },
+    {
+      "brand": "VOLKSWAGEN",
+      "models": ["Polo", "Golf", "Jetta", "Passat", "Tiguan", "Touareg", "Amarok", "T-Cross", "T-Roc"]
+    },
+    {
+      "brand": "VOLVO",
+      "models": ["S60", "S90", "V60", "V90", "XC40", "XC60", "XC90"]
+    }
+  ]
+}

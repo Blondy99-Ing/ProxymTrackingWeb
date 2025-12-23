@@ -19,6 +19,7 @@ class Voiture extends Model
     protected $fillable = [
         'voiture_unique_id',
         'immatriculation',
+        'vin',
         'mac_id_gps',
         'sim_gps',
         'marque',

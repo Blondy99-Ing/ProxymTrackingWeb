@@ -47,9 +47,9 @@
                         value="{{ old('immatriculation', $voitureEdit->immatriculation ?? '') }}" required>
                 </div>
                 <div>
-                    <label for="model" class="block text-sm font-medium text-secondary">Modèle</label>
-                    <input type="text" class="ui-input-style mt-1" id="model" name="model"
-                        placeholder="SUV, Berline, etc." value="{{ old('model', $voitureEdit->model ?? '') }}" required>
+                    <label for="vin" class="block text-sm font-medium text-secondary">Vin</label>
+                    <input type="text" class="ui-input-style mt-1" id="vin" name="vin"
+                        placeholder="SUV, Berline, etc." value="{{ old('model', $voitureEdit->vin ?? '') }}" required>
                 </div>
             </div>
 
@@ -61,10 +61,11 @@
                         required>
                 </div>
                 <div>
-                    <label for="couleur" class="block text-sm font-medium text-secondary">Couleur</label>
-                    <input type="color" class="ui-input-style mt-1 h-10 w-full p-0 border-0 cursor-pointer" id="couleur"
-                        name="couleur" value="{{ old('couleur', $voitureEdit->couleur ?? '#000000') }}" required>
+                    <label for="model" class="block text-sm font-medium text-secondary">Modèle</label>
+                    <input type="text" class="ui-input-style mt-1" id="model" name="model"
+                        placeholder="SUV, Berline, etc." value="{{ old('model', $voitureEdit->model ?? '') }}" required>
                 </div>
+                
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -75,9 +76,9 @@
                         required>
                 </div>
                 <div>
-                    <label for="sim_gps" class="block text-sm font-medium text-secondary">SIM GPS</label>
-                    <input type="text" class="ui-input-style mt-1" id="sim_gps" name="sim_gps" placeholder="696000000"
-                        value="{{ old('sim_gps', $voitureEdit->sim_gps ?? '') }}">
+                    <label for="couleur" class="block text-sm font-medium text-secondary">Couleur</label>
+                    <input type="color" class="ui-input-style mt-1 h-10 w-full p-0 border-0 cursor-pointer" id="couleur"
+                        name="couleur" value="{{ old('couleur', $voitureEdit->couleur ?? '#000000') }}" required>
                 </div>
                 <div>
                     <label for="photo" class="block text-sm font-medium text-secondary">Photo</label>
