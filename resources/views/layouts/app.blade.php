@@ -815,6 +815,8 @@
                 <ul class="nav-dropdown" id="tracking-menu">
                     <li><a href="{{ route('tracking.users') ?? '#' }}"
                             class="{{ request()->is('tracking_users') ? 'active' : '' }}">Utilisateurs</a></li>
+                    <li><a href="{{ route('villes.index') ?? '#' }}"
+                            class="{{ request()->is('villes') ? 'active' : '' }}">Villes</a></li>
                     <li><a href="{{ route('tracking.vehicles') ?? '#' }}"
                             class="{{ request()->is('tracking.vehicles') ? 'active' : '' }}">Véhicules</a></li>
                     <li><a href="{{ route('trajets.index') }}"
@@ -850,6 +852,12 @@
                         <i class="fas fa-power-off"></i>
                     </span>
                     <span class="title">Coupure Moteur</span>
+                </a>
+            </li>
+             <li>
+                <a href="{{ route('villes.index') ?? '#' }}" class="{{ request()->is('villes*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-city"></i></span>
+                    <span class="title">Geofence Villes</span>
                 </a>
             </li>
 

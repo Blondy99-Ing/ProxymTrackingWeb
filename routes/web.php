@@ -19,6 +19,8 @@ use App\Http\Controllers\GpsSimController;
 
 
 
+
+
 //Route::get('/', function () {
 //    return view('welcome');
 //});
@@ -68,9 +70,7 @@ Route::prefix('tracking')->name('tracking.')->group(function() {
 
 
 
-// route creation des ville
-Route::get('/villes', [VilleController::class, 'index'])->name('villes.index');
-Route::post('/villes', [VilleController::class, 'store'])->name('villes.store');
+
 
 
 
@@ -179,6 +179,18 @@ Route::post('/gps-sim/sync', [GpsSimController::class, 'syncFromAccount'])->name
 Route::patch('/gps-sim/{simGps}/sim', [GpsSimController::class, 'updateSim'])->name('gps_sim.sim.update');
 
 
+//route ville 
+Route::prefix('villes')->name('villes.')->group(function () {
+    Route::get('/', [VilleController::class, 'index'])->name('index');
+    Route::post('/', [VilleController::class, 'store'])->name('store');
+
+    Route::put('/{ville}', [VilleController::class, 'update'])->name('update');
+    Route::delete('/{ville}', [VilleController::class, 'destroy'])->name('destroy');
+
+
+    // ✅ flux GeoJSON pour la carte
+    Route::get('/geojson', [VilleController::class, 'geojson'])->name('geojson');
+});
 
 
 

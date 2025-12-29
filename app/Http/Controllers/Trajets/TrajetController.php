@@ -8,6 +8,7 @@ use App\Models\Trajet;
 use App\Models\Voiture;
 use App\Models\Location;
 use Carbon\Carbon;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class TrajetController extends Controller
 {
@@ -18,36 +19,17 @@ class TrajetController extends Controller
     {
         $query = Trajet::with('voiture');
 
-        // 1) Filtres rapides
-        if ($request->filled('quick')) {
-            switch ($request->quick) {
-                case 'today':
-                    $query->whereDate('start_time', now());
-                    break;
-                case 'yesterday':
-                    $query->whereDate('start_time', now()->subDay());
-                    break;
-                case 'week':
-                    $query->whereBetween('start_time', [now()->startOfWeek(), now()->endOfWeek()]);
-                    break;
-                case 'month':
-                    $query->whereBetween('start_time', [now()->startOfMonth(), now()->endOfMonth()]);
-                    break;
-                case 'year':
-                    $query->whereYear('start_time', now()->year);
-                    break;
-            }
-        }
+        /**
+         * 1) Dates :
+         * - priorité à start_date/end_date (si renseignés)
+         * - sinon quick (si renseigné)
+         * - sinon aucun filtre date
+         */
+        $this->applyIndexDateFilters($query, $request, 'start_time');
 
-        // 2) Plage dates
-        if ($request->filled('start_date')) {
-            $query->whereDate('start_time', '>=', $request->start_date);
-        }
-        if ($request->filled('end_date')) {
-            $query->whereDate('start_time', '<=', $request->end_date);
-        }
-
-        // 3) Véhicule (priorité vehicle_id)
+        /**
+         * 2) Véhicule (priorité vehicle_id)
+         */
         $selectedVehicle = null;
 
         if ($request->filled('vehicle_id')) {
@@ -59,10 +41,14 @@ class TrajetController extends Controller
             });
         }
 
-        // 4) Filtre heures (robuste)
+        /**
+         * 3) Filtre heures (robuste)
+         */
         $this->applyTimeOfDayFilter($query, $request, 'start_time');
 
-        // 5) Pagination
+        /**
+         * 4) Pagination
+         */
         $trajets = $query
             ->orderByDesc('start_time')
             ->orderByDesc('id')
@@ -86,99 +72,112 @@ class TrajetController extends Controller
     {
         $voiture = Voiture::findOrFail($id);
 
+        // Liste véhicules (switch véhicule depuis la vue)
         $vehicles = Voiture::select('id', 'immatriculation')
             ->orderBy('immatriculation')
             ->get();
 
         $perPage = 20;
 
-        // Focus demandé ?
+        /**
+         * Focus trajet
+         */
         $focusId = $request->query('focus_trajet_id');
         $focusTrajet = null;
 
         if ($focusId) {
-            $focusTrajet = Trajet::where('vehicle_id', $id)->where('id', $focusId)->first();
+            $focusTrajet = Trajet::where('vehicle_id', $id)
+                ->where('id', $focusId)
+                ->first();
         }
 
         /**
-         * ✅ 1) Si focusId existe MAIS aucun filtre date n’a été donné,
-         * on force une URL "fiable" : quick=date&date=<date du trajet focus>.
-         * => comme ça tu "tombes" bien dans la bonne période.
+         * ✅ Si on arrive via "Détails" et qu'aucun filtre date n'est fourni,
+         * on force une URL stable sur la date du trajet focus
          */
-        $hasAnyDateFilter =
+        $hasAnyExplicitDateFilter =
             $request->filled('quick') ||
             $request->filled('date') ||
             $request->filled('start_date') ||
             $request->filled('end_date');
 
-        if ($focusTrajet && !$hasAnyDateFilter) {
+        if ($focusTrajet && !$hasAnyExplicitDateFilter) {
             $params = $request->query();
             $params['quick'] = 'date';
             $params['date']  = Carbon::parse($focusTrajet->start_time)->toDateString();
 
-            // on garde focus_trajet_id pour centrer ensuite
             return redirect()->to(
                 route('voitures.trajets', ['id' => $id] + $params) . '#trajet-' . $focusId
             );
         }
 
         /**
-         * ✅ 2) Construire la requête (toujours véhicule)
-         * IMPORTANT: focus NE FILTRE PAS la query.
+         * ✅ MODE DETAIL : afficher uniquement le trajet focus (sans filtrer par quick/time etc.)
+         * - utile quand on clique "Détails"
+         */
+        $mode = $request->query('mode'); // 'detail' ou null
+
+        if ($mode === 'detail' && $focusTrajet) {
+            $shown = collect([$focusTrajet]);
+
+            // paginator "fake" pour garder la vue compatible (count(), links() optionnel)
+            $trajets = new LengthAwarePaginator(
+                $shown,
+                1,   // total
+                1,   // perPage
+                1,   // currentPage
+                [
+                    'path'  => url()->current(),
+                    'query' => $request->query(),
+                ]
+            );
+
+            [$totalDistance, $totalDuration, $maxSpeed, $avgSpeed] = $this->statsFromDbFields($shown);
+            $tracks = $this->buildTracks($shown, $voiture, $focusId);
+
+            return view('trajets.byVoiture', [
+                'voiture'       => $voiture,
+                'vehicles'      => $vehicles,
+                'trajets'       => $trajets,
+                'tracks'        => $tracks,
+                'filters'       => $request->all(),
+                'totalDistance' => $totalDistance,
+                'totalDuration' => $totalDuration,
+                'maxSpeed'      => $maxSpeed,
+                'avgSpeed'      => $avgSpeed,
+                'focusId'       => $focusId,
+                'focusTrajet'   => $focusTrajet,
+                'mode'          => $mode,
+            ]);
+        }
+
+        /**
+         * ✅ Query de base (liste filtrée)
          */
         $query = Trajet::where('vehicle_id', $id);
 
-        // 2.1) filtres date
-        $quick = $request->input('quick', 'today');
+        /**
+         * ✅ Filtres dates (par défaut today si rien)
+         */
+        $this->applyByVoitureDateFilters($query, $request, 'start_time');
 
-        switch ($quick) {
-            case 'today':
-                $query->whereDate('start_time', now());
-                break;
-            case 'yesterday':
-                $query->whereDate('start_time', now()->subDay());
-                break;
-            case 'week':
-                $query->whereBetween('start_time', [now()->startOfWeek(), now()->endOfWeek()]);
-                break;
-            case 'month':
-                $query->whereBetween('start_time', [now()->startOfMonth(), now()->endOfMonth()]);
-                break;
-            case 'year':
-                $query->whereYear('start_time', now()->year);
-                break;
-            case 'date':
-                if ($request->filled('date')) {
-                    $query->whereDate('start_time', $request->date);
-                }
-                break;
-            case 'range':
-                if ($request->filled('start_date')) {
-                    $query->whereDate('start_time', '>=', $request->start_date);
-                }
-                if ($request->filled('end_date')) {
-                    $query->whereDate('start_time', '<=', $request->end_date);
-                }
-                break;
-        }
-
-        // 2.2) filtres heures (robuste)
+        /**
+         * ✅ Filtres heures
+         */
         $this->applyTimeOfDayFilter($query, $request, 'start_time');
 
         /**
-         * ✅ 3) Si focusId est présent, on doit aller sur LA PAGE
-         * qui contient ce trajet (sinon tu ne "tombes" pas dessus).
+         * ✅ Si focus => tomber sur la page qui contient ce trajet (dans l’ensemble filtré)
+         * IMPORTANT : en mode liste uniquement
          */
         if ($focusTrajet) {
             $existsInFilteredSet = (clone $query)->where('id', $focusTrajet->id)->exists();
 
             if ($existsInFilteredSet) {
-                // même ordre que la pagination
                 $ordered = (clone $query)
                     ->orderByDesc('start_time')
                     ->orderByDesc('id');
 
-                // combien de trajets avant lui ?
                 $beforeCount = (clone $ordered)
                     ->where(function ($q) use ($focusTrajet) {
                         $q->where('start_time', '>', $focusTrajet->start_time)
@@ -189,8 +188,7 @@ class TrajetController extends Controller
                     })
                     ->count();
 
-                $targetPage = intdiv($beforeCount, $perPage) + 1;
-
+                $targetPage  = intdiv($beforeCount, $perPage) + 1;
                 $currentPage = (int) $request->query('page', 1);
 
                 if ($currentPage !== $targetPage) {
@@ -205,7 +203,7 @@ class TrajetController extends Controller
         }
 
         /**
-         * ✅ 4) Pagination (affichage tableau)
+         * ✅ Pagination (tableau)
          */
         $trajets = (clone $query)
             ->orderByDesc('start_time')
@@ -216,14 +214,14 @@ class TrajetController extends Controller
         $shown = $trajets->getCollection();
 
         /**
-         * ✅ 5) Stats depuis BD (cohérentes AVEC le tableau affiché)
+         * ✅ Stats cohérentes avec CE QUI EST AFFICHÉ
          */
         [$totalDistance, $totalDuration, $maxSpeed, $avgSpeed] = $this->statsFromDbFields($shown);
 
         /**
-         * ✅ 6) Tracks exacts depuis locations (pour trajets visibles)
+         * ✅ Tracks depuis locations
          */
-        $tracks = $this->buildTracks($shown, $voiture);
+        $tracks = $this->buildTracks($shown, $voiture, $focusId);
 
         return view('trajets.byVoiture', [
             'voiture'       => $voiture,
@@ -236,7 +234,111 @@ class TrajetController extends Controller
             'maxSpeed'      => $maxSpeed,
             'avgSpeed'      => $avgSpeed,
             'focusId'       => $focusId,
+            'focusTrajet'   => $focusTrajet,
+            'mode'          => $mode,
         ]);
+    }
+
+
+    /**
+     * Dates pour INDEX:
+     * - start_date/end_date prioritaire
+     * - sinon quick
+     * - sinon rien
+     */
+    private function applyIndexDateFilters($query, Request $request, string $column): void
+    {
+        $hasRange = $request->filled('start_date') || $request->filled('end_date');
+
+        if ($hasRange) {
+            if ($request->filled('start_date')) {
+                $query->whereDate($column, '>=', $request->start_date);
+            }
+            if ($request->filled('end_date')) {
+                $query->whereDate($column, '<=', $request->end_date);
+            }
+            return;
+        }
+
+        if ($request->filled('quick')) {
+            switch ($request->quick) {
+                case 'today':
+                    $query->whereDate($column, now());
+                    break;
+                case 'yesterday':
+                    $query->whereDate($column, now()->subDay());
+                    break;
+                case 'week':
+                    $query->whereBetween($column, [now()->startOfWeek(), now()->endOfWeek()]);
+                    break;
+                case 'month':
+                    $query->whereBetween($column, [now()->startOfMonth(), now()->endOfMonth()]);
+                    break;
+                case 'year':
+                    $query->whereYear($column, now()->year);
+                    break;
+            }
+        }
+    }
+
+
+    /**
+     * Dates pour BYVOITURE:
+     * - si quick vide mais date/range renseigné => on respecte date/range
+     * - sinon défaut today
+     */
+    private function applyByVoitureDateFilters($query, Request $request, string $column): void
+    {
+        $quick = $request->input('quick');
+        $quick = is_string($quick) ? trim($quick) : $quick;
+        if ($quick === '') $quick = null;
+
+        if (!$quick) {
+            if ($request->filled('date')) {
+                $quick = 'date';
+            } elseif ($request->filled('start_date') || $request->filled('end_date')) {
+                $quick = 'range';
+            } else {
+                $quick = 'today';
+            }
+        }
+
+        switch ($quick) {
+            case 'today':
+                $query->whereDate($column, now());
+                break;
+
+            case 'yesterday':
+                $query->whereDate($column, now()->subDay());
+                break;
+
+            case 'week':
+                $query->whereBetween($column, [now()->startOfWeek(), now()->endOfWeek()]);
+                break;
+
+            case 'month':
+                $query->whereBetween($column, [now()->startOfMonth(), now()->endOfMonth()]);
+                break;
+
+            case 'year':
+                $query->whereYear($column, now()->year);
+                break;
+
+            case 'date':
+                if ($request->filled('date')) {
+                    $query->whereDate($column, $request->date);
+                }
+                break;
+
+            case 'range':
+                if ($request->filled('start_date')) {
+                    $query->whereDate($column, '>=', $request->start_date);
+                }
+                if ($request->filled('end_date')) {
+                    $query->whereDate($column, '<=', $request->end_date);
+                }
+                break;
+        }
     }
 
 
@@ -253,7 +355,6 @@ class TrajetController extends Controller
                 $query->whereTime($column, '>=', $startT)
                       ->whereTime($column, '<=', $endT);
             } else {
-                // intervalle nuit
                 $query->where(function ($q) use ($column, $startT, $endT) {
                     $q->whereTime($column, '>=', $startT)
                       ->orWhereTime($column, '<=', $endT);
@@ -265,6 +366,7 @@ class TrajetController extends Controller
         if ($startT) $query->whereTime($column, '>=', $startT);
         if ($endT)   $query->whereTime($column, '<=', $endT);
     }
+
 
     /**
      * Stats BD cohérentes avec le tableau affiché
@@ -299,6 +401,7 @@ class TrajetController extends Controller
                     $sumWeight   += $dur;
                 }
             }
+
             $avgSpeed = ($sumWeight > 0)
                 ? ($sumWeighted / $sumWeight)
                 : (float) $trajetsCollection->avg('avg_speed_kmh');
@@ -312,17 +415,28 @@ class TrajetController extends Controller
         ];
     }
 
+
     /**
-     * Tracks exacts depuis locations (chemin)
+     * Tracks exacts depuis locations
+     * - En focus, on autorise plus de points/rows => tracé plus fidèle.
      */
-    private function buildTracks($trajetsCollection, Voiture $voiture): array
+    private function buildTracks($trajetsCollection, Voiture $voiture, $focusId = null): array
     {
         $tracks = [];
 
-        $maxPoints = (int) env('TRACK_MAX_POINTS', 1500);
-        $maxDbRows = (int) env('TRACK_MAX_DB_ROWS', 20000);
-
         foreach ($trajetsCollection as $t) {
+
+            $isFocusTrip = $focusId && ((int)$t->id === (int)$focusId);
+
+            $maxPoints = (int) ($isFocusTrip
+                ? env('TRACK_MAX_POINTS_FOCUS', 20000)
+                : env('TRACK_MAX_POINTS', 1500)
+            );
+
+            $maxDbRows = (int) ($isFocusTrip
+                ? env('TRACK_MAX_DB_ROWS_FOCUS', 120000)
+                : env('TRACK_MAX_DB_ROWS', 20000)
+            );
 
             $mac = $t->mac_id_gps ?: $voiture->mac_id_gps;
             if (empty($mac)) continue;
@@ -330,10 +444,17 @@ class TrajetController extends Controller
             $start = Carbon::parse($t->start_time);
             $end   = $t->end_time ? Carbon::parse($t->end_time) : (clone $start)->addHours(3);
 
+            $startQ = (clone $start)->subMinutes(2);
+            $endQ   = (clone $end)->addMinutes(2);
+
             $locs = Location::query()
                 ->select(['latitude', 'longitude', 'datetime', 'speed'])
                 ->where('mac_id_gps', $mac)
-                ->whereBetween('datetime', [$start, $end])
+                ->whereBetween('datetime', [$startQ, $endQ])
+                ->whereNotNull('latitude')
+                ->whereNotNull('longitude')
+                ->where('latitude', '!=', 0)
+                ->where('longitude', '!=', 0)
                 ->orderBy('datetime', 'asc')
                 ->limit($maxDbRows)
                 ->get();
@@ -350,14 +471,24 @@ class TrajetController extends Controller
                 continue;
             }
 
-            $points = $locs->map(function ($l) {
-                return [
-                    'lat'   => (float) $l->latitude,
-                    'lng'   => (float) $l->longitude,
+            $points = [];
+            $prevKey = null;
+
+            foreach ($locs as $l) {
+                $lat = (float) $l->latitude;
+                $lng = (float) $l->longitude;
+
+                $key = number_format($lat, 6) . ',' . number_format($lng, 6);
+                if ($key === $prevKey) continue;
+                $prevKey = $key;
+
+                $points[] = [
+                    'lat'   => $lat,
+                    'lng'   => $lng,
                     't'     => $l->datetime ? Carbon::parse($l->datetime)->format('Y-m-d H:i:s') : null,
                     'speed' => (float) ($l->speed ?? 0),
                 ];
-            })->values()->all();
+            }
 
             if (count($points) > $maxPoints) {
                 $step = (int) ceil(count($points) / $maxPoints);

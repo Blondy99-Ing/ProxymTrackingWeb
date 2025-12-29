@@ -28,38 +28,45 @@
         {{-- ===================== --}}
         {{-- FILTRES + RECHERCHE  --}}
         {{-- ===================== --}}
-        <form method="GET" class="space-y-5">
+        @php
+            $quick = request('quick', '');
+        @endphp
+
+        {{-- ✅ IMPORTANT: action explicite => ne traîne pas "page=..." --}}
+        <form id="filtersForm" method="GET" action="{{ route('trajets.index') }}" class="space-y-5">
+
+            {{-- ✅ quick centralisé (piloté par JS) --}}
+            <input type="hidden" name="quick" id="quickHidden" value="{{ $quick }}">
 
             {{-- ==== FILTRES RAPIDES ==== --}}
-            @php $quick = request('quick'); @endphp
             <div class="flex flex-wrap gap-2 border-b border-border-subtle pb-4">
 
-                <button type="submit" name="quick" value="today"
-                    class="px-4 py-2 text-sm rounded-full transition
+                <button type="button" data-quick="today"
+                    class="quickBtn px-4 py-2 text-sm rounded-full transition
                     {{ $quick=='today' ? 'bg-primary text-white shadow' : 'bg-hover-subtle text-secondary hover:bg-hover' }}">
                     Aujourd'hui
                 </button>
 
-                <button type="submit" name="quick" value="yesterday"
-                    class="px-4 py-2 text-sm rounded-full transition
+                <button type="button" data-quick="yesterday"
+                    class="quickBtn px-4 py-2 text-sm rounded-full transition
                     {{ $quick=='yesterday' ? 'bg-primary text-white shadow' : 'bg-hover-subtle text-secondary hover:bg-hover' }}">
                     Hier
                 </button>
 
-                <button type="submit" name="quick" value="week"
-                    class="px-4 py-2 text-sm rounded-full transition
+                <button type="button" data-quick="week"
+                    class="quickBtn px-4 py-2 text-sm rounded-full transition
                     {{ $quick=='week' ? 'bg-primary text-white shadow' : 'bg-hover-subtle text-secondary hover:bg-hover' }}">
                     Cette semaine
                 </button>
 
-                <button type="submit" name="quick" value="month"
-                    class="px-4 py-2 text-sm rounded-full transition
+                <button type="button" data-quick="month"
+                    class="quickBtn px-4 py-2 text-sm rounded-full transition
                     {{ $quick=='month' ? 'bg-primary text-white shadow' : 'bg-hover-subtle text-secondary hover:bg-hover' }}">
                     Ce mois
                 </button>
 
-                <button type="submit" name="quick" value="year"
-                    class="px-4 py-2 text-sm rounded-full transition
+                <button type="button" data-quick="year"
+                    class="quickBtn px-4 py-2 text-sm rounded-full transition
                     {{ $quick=='year' ? 'bg-primary text-white shadow' : 'bg-hover-subtle text-secondary hover:bg-hover' }}">
                     Cette année
                 </button>
@@ -73,16 +80,15 @@
                 <div class="relative">
                     <label class="text-sm font-medium text-secondary">Véhicule (recherche)</label>
 
-                    {{-- hidden: id si sélection --}}
                     <input type="hidden" name="vehicle_id" id="vehicle_id" value="{{ request('vehicle_id') }}">
-                    {{-- compatibilité avec ton controller actuel (vehicule LIKE immatriculation) --}}
-                    <input type="hidden" name="vehicule" id="vehicule" value="{{ request('vehicule') }}">
+                    <input type="hidden" name="vehicule" id="vehicule"
+                           value="{{ $selectedVehicle->immatriculation ?? request('vehicule') }}">
 
                     <div class="relative">
                         <input
                             type="text"
                             id="vehicleSearch"
-                            value="{{ request('vehicule') }}"
+                            value="{{ $selectedVehicle->immatriculation ?? request('vehicule') }}"
                             placeholder="Tape une immatriculation…"
                             autocomplete="off"
                             class="ui-input-style pl-10 pr-10 w-full"
@@ -97,7 +103,6 @@
                         </button>
                     </div>
 
-                    {{-- dropdown (sera déplacé dans body par JS) --}}
                     <div id="vehicleDropdown"
                          class="hidden border border-border-subtle rounded-xl shadow-xl overflow-hidden">
                         <div class="px-3 py-2 text-xs text-secondary border-b border-border-subtle">
@@ -119,14 +124,14 @@
                 {{-- DATE DEBUT --}}
                 <div>
                     <label class="text-sm font-medium text-secondary">Date début</label>
-                    <input type="date" name="start_date" value="{{ request('start_date') }}"
+                    <input id="startDate" type="date" name="start_date" value="{{ request('start_date') }}"
                         class="ui-input-style w-full" />
                 </div>
 
                 {{-- DATE FIN --}}
                 <div>
                     <label class="text-sm font-medium text-secondary">Date fin</label>
-                    <input type="date" name="end_date" value="{{ request('end_date') }}"
+                    <input id="endDate" type="date" name="end_date" value="{{ request('end_date') }}"
                         class="ui-input-style w-full" />
                 </div>
 
@@ -146,7 +151,7 @@
 
                 {{-- APPLY --}}
                 <div class="flex justify-end md:justify-start">
-                    <button class="btn-primary w-full md:w-auto h-[42px] px-6">
+                    <button id="applyBtn" class="btn-primary w-full md:w-auto h-[42px] px-6">
                         <i class="fas fa-filter mr-2"></i> Appliquer
                     </button>
                 </div>
@@ -174,7 +179,7 @@
 
                 <tbody>
                     @forelse ($trajets as $trajet)
-                        <tr  id="trajet-{{ $trajet->id }}" class="hover:bg-hover-subtle transition">
+                        <tr id="trajet-{{ $trajet->id }}" class="hover:bg-hover-subtle transition">
                             <td class="font-semibold text-primary">
                                 {{ $trajet->voiture->immatriculation ?? 'N/A' }}
                             </td>
@@ -212,10 +217,19 @@
                             </td>
 
                             <td>
-                                <a href="{{ route('voitures.trajets', ['id' => $trajet->vehicle_id] + request()->query() + ['focus_trajet_id' => $trajet->id]) }}"
-                                class="text-primary hover:text-primary-dark font-medium">
+                               @php
+                                $params = request()->except(['page','focus_trajet_id','mode']);
+                                $params = array_merge($params, [
+                                    'id' => $trajet->vehicle_id,
+                                    'focus_trajet_id' => $trajet->id,
+                                    'mode' => 'detail',
+                                ]);
+                            @endphp
+
+                            <a href="{{ route('voitures.trajets', $params) }}#trajet-{{ $trajet->id }}"
+                            class="text-primary hover:text-primary-dark font-medium">
                                 <i class="fas fa-eye mr-1"></i> Détails
-                                </a>
+                            </a>
 
                             </td>
                         </tr>
@@ -244,13 +258,37 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  /**
-   * Pour proposer des véhicules dans l'autocomplete, il faut passer $vehicles depuis le controller:
-   * $vehicles = Voiture::select('id','immatriculation')->orderBy('immatriculation')->get();
-   * return view('trajets.index', compact('trajets','vehicles'));
-   */
   const vehicles = @json($vehicles ?? []);
 
+  const form          = document.getElementById('filtersForm');
+  const quickHidden   = document.getElementById('quickHidden');
+  const startDate     = document.getElementById('startDate');
+  const endDate       = document.getElementById('endDate');
+  const applyBtn      = document.getElementById('applyBtn');
+
+  // ✅ Quick buttons: quick override => on efface start/end date avant submit
+  document.querySelectorAll('.quickBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const q = btn.dataset.quick || '';
+      if (quickHidden) quickHidden.value = q;
+
+      if (startDate) startDate.value = '';
+      if (endDate) endDate.value = '';
+
+      // on soumet
+      form.submit();
+    });
+  });
+
+  // ✅ Apply: si user met une plage dates, on neutralise quick
+  if (applyBtn) {
+    applyBtn.addEventListener('click', () => {
+      const hasRange = (startDate && startDate.value) || (endDate && endDate.value);
+      if (hasRange && quickHidden) quickHidden.value = '';
+    });
+  }
+
+  // ----- autocomplete véhicules (ton code, avec 2 petites améliorations) -----
   const searchInput   = document.getElementById('vehicleSearch');
   const dropdown      = document.getElementById('vehicleDropdown');
   const resultsEl     = document.getElementById('vehicleResults');
@@ -262,7 +300,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (!searchInput || !dropdown) return;
 
-  // porter le dropdown dans le body pour éviter blur / stacking
   document.body.appendChild(dropdown);
   dropdown.style.position = 'fixed';
   dropdown.style.zIndex = '99999';
@@ -341,6 +378,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     clearBtn?.classList.remove('hidden');
     closeDropdown();
+
+    // ✅ UX: dès qu’on sélectionne un véhicule => submit
+    form.submit();
   }
 
   function clearVehicle() {
@@ -377,6 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const qRaw = searchInput.value || '';
     const q = normalize(qRaw);
 
+    // si l’utilisateur retape, on bascule en mode LIKE (vehicule)
     vehicleIdEl.value = '';
     vehiculeText.value = qRaw.trim();
 
@@ -414,7 +455,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // init clear button visibility
   if ((vehicleIdEl.value || '').trim() || (searchInput.value || '').trim()) {
     clearBtn?.classList.remove('hidden');
   }
