@@ -1,210 +1,260 @@
 {{-- resources/views/villes/index.blade.php --}}
 @extends('layouts.app')
 
-@section('title', 'Gestion des Villes - Dessiner un périmètre')
+@section('title', 'Villes & Zones')
 
 @push('head')
-    <style>
-        #map { width: 100%; height: calc(100vh - 260px); min-height: 520px; border-radius: 14px; }
-        .map-toolbar{
-            position:absolute; top:14px; left:14px; z-index:10;
-            display:flex; flex-wrap:wrap; gap:8px;
-            padding:10px; border-radius:14px;
-            background: rgba(255,255,255,.92);
-            border:1px solid rgba(0,0,0,.08);
-            backdrop-filter: blur(6px);
-        }
-        .dark .map-toolbar{ background: rgba(17,24,39,.88); border-color: rgba(255,255,255,.08); }
-        .map-hint{
-            position:absolute; bottom:14px; left:14px; z-index:10;
-            max-width: 520px; padding:10px 12px; border-radius:12px; font-size:12px;
-            background: rgba(255,255,255,.92);
-            border: 1px solid rgba(0,0,0,.08);
-            color:#111827;
-            backdrop-filter: blur(6px);
-        }
-        .dark .map-hint{ background: rgba(17,24,39,.88); border-color: rgba(255,255,255,.08); color:#e5e7eb; }
-        .btn{ padding:8px 10px; border-radius:10px; font-size:12px; border:1px solid rgba(0,0,0,.08); background:white; }
-        .dark .btn{ background: rgba(31,41,55,1); border-color: rgba(255,255,255,.08); color:#e5e7eb; }
-        .btn-primary{ border-color: rgba(245,130,32,.25); background: rgba(245,130,32,.12); color:#F58220; }
-        .btn-danger{ border-color: rgba(239,68,68,.25); background: rgba(239,68,68,.12); color:#ef4444; }
-        .btn:disabled{ opacity:.45; cursor:not-allowed; }
-
-        .ui-input{ width:100%; padding:10px 12px; border-radius:12px; border:1px solid rgba(0,0,0,.10); background:white; font-size:13px; }
-        .dark .ui-input{ background: rgba(31,41,55,1); border-color: rgba(255,255,255,.10); color:#e5e7eb; }
-
-        .ui-table-container{ overflow-x:auto; }
-        .ui-table{ width:100%; border-collapse:collapse; }
-        .ui-table th,.ui-table td{ padding:10px 12px; border-bottom:1px solid rgba(0,0,0,.06); font-size:13px; }
-        .dark .ui-table th,.dark .ui-table td{ border-bottom:1px solid rgba(255,255,255,.08); }
-        .ui-table th{ text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:#6b7280; }
-        .dark .ui-table th{ color:#9ca3af; }
-    </style>
-
-    {{-- ✅ Google Maps (callback = initMap) --}}
-    <script
-        src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') }}&callback=initMap&libraries=geometry"
-        async defer>
-    </script>
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script async defer
+    src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') ?? env('GOOGLE_MAPS_KEY') }}&callback=initMap">
+</script>
 @endpush
 
 @section('content')
-
 @php
-    // ✅ on prépare un array propre pour JS (évite les ParseError dans @json)
-    $villesJs = ($villes ?? collect())->map(function($v){
+    $storeUrl = \Illuminate\Support\Facades\Route::has('villes.store') ? route('villes.store') : url('/villes');
+
+    $villesCollection = $villes ?? collect();
+
+    // On prépare une structure JSON simple, sans closures Blade complexes
+    $villesPayload = $villesCollection->map(function ($ville) {
+        $updateUrl = \Illuminate\Support\Facades\Route::has('villes.update')
+            ? route('villes.update', $ville->id)
+            : url('/villes/'.$ville->id);
+
+        $deleteUrl = \Illuminate\Support\Facades\Route::has('villes.destroy')
+            ? route('villes.destroy', $ville->id)
+            : url('/villes/'.$ville->id);
+
         return [
-            'id' => $v->id,
-            'code_ville' => $v->code_ville,
-            'name' => $v->name,
-            'geom' => $v->geom, // string json ou objet -> ok
+            'id' => $ville->id,
+            'code' => $ville->code_ville,
+            'name' => $ville->name,
+            'geom' => $ville->geom, // GeoJSON string
+            'update_url' => $updateUrl,
+            'delete_url' => $deleteUrl,
         ];
     })->values();
 @endphp
 
-<div class="space-y-4 p-0 md:p-4">
+<div class="space-y-6">
+
+    {{-- Messages --}}
+    @if(session('success'))
+        <div class="ui-card p-3">
+            <p class="text-sm font-medium text-green-600">
+                <i class="fas fa-check-circle mr-2"></i>{{ session('success') }}
+            </p>
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="ui-card p-3 is-error-state">
+            <p class="text-sm font-medium text-red-600">
+                <i class="fas fa-exclamation-triangle mr-2"></i>{{ session('error') }}
+            </p>
+        </div>
+    @endif
+
+    @if ($errors->any())
+        <div class="ui-card p-3 is-error-state">
+            <p class="text-sm font-semibold text-red-600 mb-2">
+                <i class="fas fa-times-circle mr-2"></i>Erreurs :
+            </p>
+            <ul class="text-sm text-red-600 list-disc ml-5">
+                @foreach($errors->all() as $e)
+                    <li>{{ $e }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
 
     {{-- Carte + Formulaire --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
         {{-- Carte --}}
-        <div class="lg:col-span-2">
-            <div class="ui-card p-3 relative">
-                <div id="map"></div>
-
-                {{-- Toolbar --}}
-                <div class="map-toolbar">
-                    <button id="btnStart" type="button" class="btn btn-primary">
-                        <i class="fas fa-draw-polygon mr-1"></i> Dessiner
-                    </button>
-
-                    <button id="btnUndo" type="button" class="btn">
-                        <i class="fas fa-undo mr-1"></i> Annuler dernier point
-                    </button>
-
-                    <button id="btnDeleteVertex" type="button" class="btn btn-danger">
-                        <i class="fas fa-eraser mr-1"></i> Supprimer point sélectionné
-                    </button>
-
-                    <button id="btnFinish" type="button" class="btn btn-primary">
-                        <i class="fas fa-check mr-1"></i> Terminer
-                    </button>
-
-                    <button id="btnClear" type="button" class="btn">
-                        <i class="fas fa-trash mr-1"></i> Effacer tout
-                    </button>
+        <div class="lg:col-span-2 ui-card p-4">
+            <div class="flex items-start justify-between gap-3 mb-3">
+                <div>
+                    <h2 class="text-sm font-orbitron font-semibold" style="color: var(--color-text);">
+                        Dessiner la zone (polygone)
+                    </h2>
+                    <p class="text-[11px] text-secondary mt-0.5">
+                        <b>Dessiner</b> → clique pour ajouter des points • <b>Annuler point</b> retire le dernier •
+                        clic droit sur un sommet → sélection puis <b>Supprimer point</b> • <b>Terminer</b> pour finir.
+                    </p>
                 </div>
 
-                <div id="mapHint" class="map-hint">
-                    Clique sur <b>Dessiner</b>, puis clique sur la carte pour ajouter des points.
-                    <br>• <b>Annuler dernier point</b> enlève le dernier sommet.
-                    <br>• Clique sur un point (sommet) pour le sélectionner, puis <b>Supprimer point sélectionné</b>.
-                    <br>• Clique sur <b>Terminer</b> pour générer le polygone (modifiable).
+                <div class="text-[11px] text-secondary">
+                    <div id="mapInfo" class="px-3 py-2 rounded-lg border"
+                         style="border-color: var(--color-border-subtle); background: var(--color-card);">
+                        Carte en chargement…
+                    </div>
                 </div>
             </div>
+
+            {{-- Toolbar --}}
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+                <button id="btnStartDraw" type="button"
+                        class="px-3 py-2 rounded-lg text-xs font-semibold border hover:shadow"
+                        style="border-color: var(--color-border-subtle);">
+                    <i class="fas fa-draw-polygon mr-1"></i> Dessiner
+                </button>
+
+                <button id="btnFinishDraw" type="button"
+                        class="px-3 py-2 rounded-lg text-xs font-semibold border hover:shadow"
+                        style="border-color: var(--color-border-subtle);">
+                    <i class="fas fa-check mr-1"></i> Terminer
+                </button>
+
+                <button id="btnUndoPoint" type="button"
+                        class="px-3 py-2 rounded-lg text-xs font-semibold border hover:shadow"
+                        style="border-color: var(--color-border-subtle);">
+                    <i class="fas fa-undo mr-1"></i> Annuler point
+                </button>
+
+                <button id="btnDeletePoint" type="button"
+                        class="px-3 py-2 rounded-lg text-xs font-semibold border hover:shadow"
+                        style="border-color: var(--color-border-subtle);">
+                    <i class="fas fa-eraser mr-1"></i> Supprimer point
+                </button>
+
+                <button id="btnClearPolygon" type="button"
+                        class="px-3 py-2 rounded-lg text-xs font-semibold border hover:shadow"
+                        style="border-color: var(--color-border-subtle);">
+                    <i class="fas fa-trash mr-1"></i> Effacer zone
+                </button>
+            </div>
+
+            <div id="map" class="rounded-xl shadow-inner"
+                 style="height: 560px; border: 1px solid var(--color-border-subtle);"></div>
         </div>
 
-        {{-- Form --}}
-        <div class="lg:col-span-1">
-            <div class="ui-card p-4 space-y-3">
-                <h2 class="text-sm font-orbitron font-semibold" style="color: var(--color-text);">
-                    <span id="formTitle">Créer une ville + périmètre</span>
-                </h2>
-
-                <form id="cityForm" method="POST" action="{{ route('villes.store') }}" class="space-y-3">
-                    @csrf
-                    <input type="hidden" id="methodField" name="_method" value="">
-                    <input type="hidden" id="editingCityId" value="">
-
-                    <div>
-                        <label class="text-xs text-secondary">Code ville (optionnel)</label>
-                        <input id="code_ville" class="ui-input" type="text" name="code_ville"
-                               value="{{ old('code_ville') }}" placeholder="Ex: DLA-001">
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-secondary">Nom *</label>
-                        <input id="name" class="ui-input" type="text" name="name"
-                               value="{{ old('name') }}" required placeholder="Ex: Douala">
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-secondary">GeoJSON (auto) *</label>
-                        <textarea id="geom" name="geom" class="ui-input" rows="6" readonly required
-                                  placeholder='{"type":"Polygon","coordinates":[...] }'>{{ old('geom') }}</textarea>
-                        <p class="text-[11px] text-secondary mt-1">
-                            Le champ est rempli automatiquement quand tu termines le dessin / modifies le polygone.
-                        </p>
-                    </div>
-
-                    <div class="pt-2 flex items-center gap-2">
-                        <button id="btnSubmit" type="submit" class="btn btn-primary">
-                            <i class="fas fa-save mr-1"></i> Enregistrer
-                        </button>
-
-                        <button id="btnCancelEdit" type="button" class="btn" style="display:none;">
-                            <i class="fas fa-times mr-1"></i> Annuler édition
-                        </button>
-
-                        <button type="button" class="btn" onclick="window.location.reload()">
-                            <i class="fas fa-rotate mr-1"></i> Réinitialiser
-                        </button>
-                    </div>
-                </form>
+        {{-- Formulaire (Select) --}}
+        <div class="ui-card p-4">
+            <div class="flex items-start justify-between gap-3 mb-3">
+                <div>
+                    <h2 class="text-sm font-orbitron font-semibold" style="color: var(--color-text);">
+                        Ville (sélection)
+                    </h2>
+                    <p class="text-[11px] text-secondary mt-0.5">
+                        Choisis une ville pour modifier sa zone, ou clique “Nouvelle ville”.
+                    </p>
+                </div>
+                <div class="w-9 h-9 rounded-full flex items-center justify-center"
+                     style="background: rgba(245,130,32,0.12);">
+                    <i class="fas fa-city text-primary text-sm"></i>
+                </div>
             </div>
+
+           
+
+            <form id="villeForm" method="POST" action="{{ $storeUrl }}" class="space-y-3">
+                @csrf
+
+                <input type="hidden" id="ville_id" name="ville_id" value="">
+                <input type="hidden" id="_method" name="_method" value="">
+                <input type="hidden" id="geom" name="geom" value="{{ old('geom') }}">
+
+                <div>
+                    <label class="text-xs font-semibold text-secondary">Code ville</label>
+                    <input id="code_ville" name="code_ville" type="text"
+                           class="ui-input-style text-xs mt-1"
+                           placeholder="Ex: DLA"
+                           value="{{ old('code_ville') }}">
+                </div>
+
+                <div>
+                    <label class="text-xs font-semibold text-secondary">Nom</label>
+                    <input id="name" name="name" type="text"
+                           class="ui-input-style text-xs mt-1"
+                           placeholder="Ex: Douala"
+                           value="{{ old('name') }}" required>
+                </div>
+
+                <div class="grid grid-cols-1 gap-2 pt-2">
+                    <button id="btnSaveVille" type="submit"
+                            class="px-3 py-2 rounded-lg text-xs font-semibold text-white hover:shadow"
+                            style="background: var(--color-primary);">
+                        <i class="fas fa-save mr-1"></i> Enregistrer
+                    </button>
+
+                    
+                </div>
+
+                
+
+                <p class="text-[11px] text-secondary">
+                    ⚠️ La zone (polygone) est obligatoire.
+                </p>
+            </form>
         </div>
     </div>
 
-    {{-- ✅ TABLEAU EN BAS (3 colonnes) --}}
+    {{-- TABLEAU --}}
     <div class="ui-card p-4">
         <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-orbitron font-semibold" style="color: var(--color-text);">Liste des villes</h2>
-            <p class="text-[11px] text-secondary">{{ ($villes ?? collect())->count() }} ville(s)</p>
+            <h2 class="text-sm font-orbitron font-semibold" style="color: var(--color-text);">
+                Liste des villes ({{ $villesCollection->count() }})
+            </h2>
+            <p class="text-[11px] text-secondary">Voir / Modifier / Supprimer</p>
         </div>
 
         <div class="ui-table-container">
             <table class="ui-table">
                 <thead>
                     <tr>
-                        <th style="width: 180px;">Code</th>
+                        <th style="width: 150px;">Code</th>
                         <th>Nom</th>
-                        <th style="width: 260px;">Actions</th>
+                        <th style="width: 180px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse(($villes ?? collect()) as $ville)
-                        <tr>
-                            <td style="color: var(--color-text);">
-                                {{ $ville->code_ville ?? '-' }}
-                            </td>
-                            <td style="color: var(--color-text);">
-                                {{ $ville->name }}
-                            </td>
-                            <td>
-                                
-                                    <button type="button" class="btn"
-                                            onclick="showCityZone({{ $ville->id }})" title="Voir la zone">
-                                        <i class="fas fa-map-marked-alt mr-1"></i> Voir zone
-                                    </button>
+                @forelse($villesCollection as $ville)
+                    @php
+                        $updateUrl = \Illuminate\Support\Facades\Route::has('villes.update')
+                            ? route('villes.update', $ville->id)
+                            : url('/villes/'.$ville->id);
 
-                                    <button type="button" class="btn btn-primary"
-                                            onclick="editCity({{ $ville->id }})" title="Modifier">
-                                        <i class="fas fa-pen mr-1"></i> Modifier
-                                    </button>
+                        $deleteUrl = \Illuminate\Support\Facades\Route::has('villes.destroy')
+                            ? route('villes.destroy', $ville->id)
+                            : url('/villes/'.$ville->id);
+                    @endphp
+                    <tr>
+                        <td>{{ $ville->code_ville ?? '-' }}</td>
+                        <td>{{ $ville->name }}</td>
+                        <td>
+                            <div class="flex items-center gap-2">
+                                <button type="button"
+                                        class="js-ville-view text-blue-600 hover:text-blue-800 p-2"
+                                        data-id="{{ $ville->id }}"
+                                        title="Voir la zone">
+                                    <i class="fas fa-eye"></i>
+                                </button>
 
-                                    <form method="POST" action="{{ route('villes.destroy', $ville->id) }}"
-                                          onsubmit="return confirm('Supprimer cette ville ?');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-danger" title="Supprimer">
-                                            <i class="fas fa-trash mr-1"></i> Supprimer
-                                        </button>
-                                    </form>
-                               
-                            </td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="3" class="text-secondary">Aucune ville enregistrée.</td></tr>
-                    @endforelse
+                                <button type="button"
+                                        class="js-ville-edit text-amber-600 hover:text-amber-800 p-2"
+                                        data-id="{{ $ville->id }}"
+                                        title="Modifier">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+
+                                <button type="button"
+                                        class="js-ville-delete text-red-600 hover:text-red-800 p-2"
+                                        data-delete-url="{{ $deleteUrl }}"
+                                        title="Supprimer">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="3" class="text-center text-sm text-secondary py-6">
+                            Aucune ville enregistrée.
+                        </td>
+                    </tr>
+                @endforelse
                 </tbody>
             </table>
         </div>
@@ -212,411 +262,422 @@
 
 </div>
 
+{{-- JSON villes (robuste, évite erreurs Blade) --}}
+<script type="application/json" id="villesJson">
+{!! json_encode($villesPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
+</script>
+
 <script>
-let map;
+(function () {
+  let map = null;
 
-// Mode dessin
-let isDrawing = false;
-let previewLine = null;
-let previewMarkers = [];
+  // Drawing state
+  let drawingMode = false;
+  let tempPath = [];
+  let tempMarkers = [];
+  let tempPolyline = null;
 
-// Polygone éditable (form)
-let polygon = null;
+  // Final polygon
+  let polygon = null;
+  let selectedVertex = null;
 
-// Polygone “voir zone” (lecture seule)
-let viewPolygon = null;
+  const $ = (id) => document.getElementById(id);
 
-// Sélection sommet
-let selectedVertexIndex = null;
-let selectedVertexMarker = null;
+  function getVillesData() {
+    const el = $('villesJson');
+    if (!el) return [];
+    try { return JSON.parse(el.textContent || '[]'); } catch(e) { return []; }
+  }
 
-// DOM
-const geomEl = () => document.getElementById('geom');
-const hintEl = () => document.getElementById('mapHint');
+  const villesIndex = getVillesData();
 
-const btnStart = () => document.getElementById('btnStart');
-const btnUndo  = () => document.getElementById('btnUndo');
-const btnDeleteVertex = () => document.getElementById('btnDeleteVertex');
-const btnFinish = () => document.getElementById('btnFinish');
-const btnClear  = () => document.getElementById('btnClear');
+  function csrfToken() {
+    const m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.getAttribute('content') : '';
+  }
 
-const formEl = () => document.getElementById('cityForm');
-const formTitleEl = () => document.getElementById('formTitle');
-const btnSubmitEl = () => document.getElementById('btnSubmit');
-const btnCancelEditEl = () => document.getElementById('btnCancelEdit');
-const methodFieldEl = () => document.getElementById('methodField');
-const editingCityIdEl = () => document.getElementById('editingCityId');
-const nameEl = () => document.getElementById('name');
-const codeVilleEl = () => document.getElementById('code_ville');
+  function setInfo(msg) {
+    const el = $('mapInfo');
+    if (el) el.textContent = msg;
+  }
 
-// ✅ Routes (safe)
-const ROUTE_STORE = @json(route('villes.store'));
-const ROUTE_UPDATE_0 = @json(route('villes.update', 0)); // => .../villes/0
-function buildUpdateUrl(id){ return ROUTE_UPDATE_0.replace('/0', '/' + id); }
+  function setButtonsState() {
+    const hasPolygon = !!polygon;
+    const hasTemp = tempPath.length > 0;
 
-// ✅ Villes pour JS (safe)
-const VILLES = @json($villesJs);
-const citiesById = {};
-VILLES.forEach(v => { citiesById[v.id] = v; });
+    if ($('btnStartDraw')) $('btnStartDraw').disabled = drawingMode;
+    if ($('btnFinishDraw')) $('btnFinishDraw').disabled = !drawingMode || tempPath.length < 3;
+    if ($('btnUndoPoint')) $('btnUndoPoint').disabled = drawingMode ? !hasTemp : !hasPolygon;
+    if ($('btnDeletePoint')) $('btnDeletePoint').disabled = !(hasPolygon && selectedVertex !== null);
+    if ($('btnClearPolygon')) $('btnClearPolygon').disabled = !(hasPolygon || hasTemp);
 
-function setHint(html){ if (hintEl()) hintEl().innerHTML = html; }
+    if ($('btnDeleteVille')) $('btnDeleteVille').disabled = !($('ville_id') && $('ville_id').value);
+  }
 
-function updateButtons(){
-    const previewLen = previewLine ? previewLine.getPath().getLength() : 0;
-    const polyLen = polygon ? polygon.getPath().getLength() : 0;
-    btnUndo().disabled = (previewLen === 0 && polyLen === 0);
-    btnFinish().disabled = !(isDrawing && previewLen >= 3);
-    btnDeleteVertex().disabled = (selectedVertexIndex === null);
-    btnClear().disabled = (previewLen === 0 && polyLen === 0 && !geomEl().value && !viewPolygon);
-}
-
-function clearPreviewMarkers(){
-    previewMarkers.forEach(m => m.setMap(null));
-    previewMarkers = [];
-}
-
-function ensureSelectedMarker(){
-    if (selectedVertexMarker) return;
-    selectedVertexMarker = new google.maps.Marker({
-        map,
-        clickable: false,
-        zIndex: 9999,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillOpacity: 1, strokeOpacity: 1 }
-    });
-}
-
-function syncPreviewMarkers(){
-    clearPreviewMarkers();
-    const path = previewLine.getPath();
-    for (let i=0;i<path.getLength();i++){
-        const pos = path.getAt(i);
-        const m = new google.maps.Marker({
-            map,
-            position: pos,
-            clickable: true,
-            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 5, fillOpacity: 1, strokeOpacity: 1 }
-        });
-        m.addListener('click', () => {
-            selectedVertexIndex = i;
-            ensureSelectedMarker();
-            selectedVertexMarker.setPosition(pos);
-            setHint(`Point <b>#${i+1}</b> sélectionné. Clique sur <b>Supprimer point sélectionné</b>.`);
-            updateButtons();
-        });
-        previewMarkers.push(m);
+  function clearTemp() {
+    tempPath = [];
+    tempMarkers.forEach(m => m.setMap(null));
+    tempMarkers = [];
+    if (tempPolyline) {
+      tempPolyline.setMap(null);
+      tempPolyline = null;
     }
-}
+  }
 
-function removeViewPolygon(){
-    if (viewPolygon){ viewPolygon.setMap(null); viewPolygon = null; }
-}
-
-function resetFormToCreate(){
-    formTitleEl().textContent = "Créer une ville + périmètre";
-    btnSubmitEl().innerHTML = `<i class="fas fa-save mr-1"></i> Enregistrer`;
-    btnCancelEditEl().style.display = 'none';
-    methodFieldEl().value = '';
-    editingCityIdEl().value = '';
-    formEl().action = ROUTE_STORE;
-}
-
-function clearAll(){
-    removeViewPolygon();
-
-    if (polygon){ polygon.setMap(null); polygon = null; }
-
-    if (previewLine){ previewLine.setPath([]); }
-    clearPreviewMarkers();
-
-    selectedVertexIndex = null;
-    ensureSelectedMarker();
-    selectedVertexMarker.setPosition(null);
-
-    geomEl().value = '';
-    isDrawing = false;
-
-    setHint(`Clique sur <b>Dessiner</b>, puis clique sur la carte pour ajouter des points.
-        <br>• <b>Annuler dernier point</b> enlève le dernier sommet.
-        <br>• Clique sur un point (sommet) pour le sélectionner, puis <b>Supprimer point sélectionné</b>.
-        <br>• Clique sur <b>Terminer</b> pour générer le polygone (modifiable).`);
-
-    updateButtons();
-}
-
-function startDrawing(){
-    resetFormToCreate();
-    clearAll();
-    isDrawing = true;
-
-    setHint(`<b>Mode dessin activé.</b> Clique sur la carte pour ajouter des points.
-        <br>• Utilise <b>Annuler dernier point</b> si tu te trompes.
-        <br>• Clique sur un point pour le sélectionner puis <b>Supprimer point sélectionné</b>.
-        <br>• Clique sur <b>Terminer</b> quand tu as au moins 3 points.`);
-    updateButtons();
-}
-
-function undoLastPoint(){
-    if (isDrawing && previewLine){
-        const p = previewLine.getPath();
-        const len = p.getLength();
-        if (len>0){ p.removeAt(len-1); }
-        selectedVertexIndex = null;
-        ensureSelectedMarker(); selectedVertexMarker.setPosition(null);
-        syncPreviewMarkers();
-    } else if (polygon){
-        const p = polygon.getPath();
-        const len = p.getLength();
-        if (len>3){ p.removeAt(len-1); updateGeomFromPolygon(); }
+  function clearPolygon() {
+    if (polygon) {
+      polygon.setMap(null);
+      polygon = null;
     }
-    updateButtons();
-}
+    selectedVertex = null;
+    if ($('geom')) $('geom').value = '';
+  }
 
-function deleteSelectedVertex(){
-    if (selectedVertexIndex === null){
-        setHint("Aucun point sélectionné. Clique sur un sommet pour le sélectionner.");
-        updateButtons();
-        return;
+  function safeParseGeo(geomStr) {
+    if (!geomStr) return null;
+    try { return JSON.parse(geomStr); } catch(e) { return null; }
+  }
+
+  function geojsonToPaths(geo) {
+    if (!geo) return [];
+    let g = geo;
+    if (g.type === 'Feature') g = g.geometry;
+    if (g.type === 'FeatureCollection') g = (g.features && g.features[0]) ? g.features[0].geometry : null;
+    if (!g || g.type !== 'Polygon') return [];
+
+    const ring = (g.coordinates && g.coordinates[0]) ? g.coordinates[0] : [];
+    const pts = ring.map(function (pair) {
+      const lng = parseFloat(pair[0]);
+      const lat = parseFloat(pair[1]);
+      return { lat: lat, lng: lng };
+    }).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+
+    // Si le dernier point = premier, on peut enlever pour l'affichage/edit
+    if (pts.length > 2) {
+      const a = pts[0];
+      const b = pts[pts.length - 1];
+      if (a.lat === b.lat && a.lng === b.lng) pts.pop();
     }
+    return pts;
+  }
 
-    if (isDrawing && previewLine){
-        const p = previewLine.getPath();
-        if (p.getLength() <= 1) p.clear();
-        else p.removeAt(selectedVertexIndex);
-
-        selectedVertexIndex = null;
-        ensureSelectedMarker(); selectedVertexMarker.setPosition(null);
-        syncPreviewMarkers();
-        setHint("Point supprimé (mode dessin).");
-        updateButtons();
-        return;
-    }
-
-    if (polygon){
-        const p = polygon.getPath();
-        if (p.getLength() <= 3){
-            setHint("Impossible: un polygone doit garder au moins 3 points.");
-            updateButtons();
-            return;
-        }
-        p.removeAt(selectedVertexIndex);
-        selectedVertexIndex = null;
-        ensureSelectedMarker(); selectedVertexMarker.setPosition(null);
-        updateGeomFromPolygon();
-        setHint("Point supprimé (polygone).");
-        updateButtons();
-    }
-}
-
-function bindPolygonEvents(poly){
-    poly.addListener('click', (e) => {
-        if (typeof e.vertex === 'number'){
-            selectedVertexIndex = e.vertex;
-            const pos = poly.getPath().getAt(selectedVertexIndex);
-            ensureSelectedMarker();
-            selectedVertexMarker.setPosition(pos);
-            setHint(`Sommet <b>#${selectedVertexIndex+1}</b> sélectionné. Clique sur <b>Supprimer point sélectionné</b>.`);
-            updateButtons();
-        }
-    });
-
+  function polygonToGeojson(poly) {
     const path = poly.getPath();
-    path.addListener('set_at', updateGeomFromPolygon);
-    path.addListener('insert_at', updateGeomFromPolygon);
-    path.addListener('remove_at', updateGeomFromPolygon);
-}
+    const coords = [];
+    for (let i = 0; i < path.getLength(); i++) {
+      const p = path.getAt(i);
+      coords.push([p.lng(), p.lat()]);
+    }
+    // ferme l'anneau
+    if (coords.length) coords.push([coords[0][0], coords[0][1]]);
+    return {
+      type: "Feature",
+      properties: {},
+      geometry: { type: "Polygon", coordinates: [coords] }
+    };
+  }
 
-function updateGeomFromPolygon(){
+  function syncGeom() {
+    if (!polygon || !$('geom')) return;
+    $('geom').value = JSON.stringify(polygonToGeojson(polygon));
+  }
+
+  function fitTo(paths) {
+    if (!map || !paths.length) return;
+    const bounds = new google.maps.LatLngBounds();
+    paths.forEach(p => bounds.extend(p));
+    map.fitBounds(bounds);
+  }
+
+  function attachPolygonEvents() {
     if (!polygon) return;
-    const ring = [];
+
     const path = polygon.getPath();
+    google.maps.event.addListener(path, 'set_at', syncGeom);
+    google.maps.event.addListener(path, 'insert_at', syncGeom);
+    google.maps.event.addListener(path, 'remove_at', syncGeom);
 
-    for (let i=0;i<path.getLength();i++){
-        const pt = path.getAt(i);
-        ring.push([pt.lng(), pt.lat()]);
+    google.maps.event.addListener(polygon, 'rightclick', function (e) {
+      if (e.vertex != null) {
+        selectedVertex = e.vertex;
+        setInfo("Sommet sélectionné → clique \"Supprimer point\".");
+        setButtonsState();
+      }
+    });
+
+    syncGeom();
+  }
+
+  function loadPolygonFromVille(villeId, editable) {
+    const v = villesIndex.find(x => String(x.id) === String(villeId));
+    clearTemp();
+    clearPolygon();
+
+    if (!v) {
+      setInfo("Ville introuvable.");
+      setButtonsState();
+      return;
     }
 
-    // fermer l'anneau
-    if (ring.length){
-        const first = ring[0];
-        const last = ring[ring.length-1];
-        if (first[0] !== last[0] || first[1] !== last[1]){
-            ring.push([first[0], first[1]]);
-        }
+    const geo = safeParseGeo(v.geom);
+    const paths = geojsonToPaths(geo);
+
+    if (paths.length < 3) {
+      setInfo("Zone vide ou GeoJSON invalide.");
+      setButtonsState();
+      return;
     }
-
-    geomEl().value = JSON.stringify({ type:"Polygon", coordinates:[ring] });
-    updateButtons();
-}
-
-function finishPolygon(){
-    if (!isDrawing || !previewLine) return;
-
-    const p = previewLine.getPath();
-    if (p.getLength() < 3){
-        setHint("Ajoute au moins 3 points pour créer un polygone.");
-        updateButtons();
-        return;
-    }
-
-    removeViewPolygon();
 
     polygon = new google.maps.Polygon({
-        map,
-        paths: p,
-        editable: true
+      map: map,
+      paths: paths,
+      editable: !!editable,
+      draggable: !!editable,
+      strokeWeight: 2
     });
 
-    isDrawing = false;
-    previewLine.setPath([]);
-    clearPreviewMarkers();
+    attachPolygonEvents();
+    fitTo(paths);
+    setInfo(editable ? "Zone chargée (édition activée)." : "Zone affichée (lecture).");
+    setButtonsState();
+  }
 
-    selectedVertexIndex = null;
-    ensureSelectedMarker(); selectedVertexMarker.setPosition(null);
+  function startDrawing() {
+    drawingMode = true;
+    selectedVertex = null;
 
-    bindPolygonEvents(polygon);
-    updateGeomFromPolygon();
+    clearTemp();
+    clearPolygon();
 
-    setHint("Polygone créé ✅ Tu peux déplacer les sommets. Le GeoJSON se met à jour automatiquement.");
-    updateButtons();
-}
+    tempPolyline = new google.maps.Polyline({
+      map: map,
+      path: [],
+      strokeWeight: 2
+    });
 
-function geojsonToLatLngs(geojson){
-    if (!geojson) return null;
+    setInfo("Mode dessin : clique pour ajouter des points.");
+    setButtonsState();
+  }
 
-    let gj = geojson;
-    if (typeof gj === 'string'){
-        try { gj = JSON.parse(gj); } catch(e){ return null; }
+  function addPoint(latLng) {
+    const p = { lat: latLng.lat(), lng: latLng.lng() };
+    tempPath.push(p);
+
+    tempMarkers.push(new google.maps.Marker({
+      map: map,
+      position: p,
+      clickable: false
+    }));
+
+    if (tempPolyline) tempPolyline.setPath(tempPath);
+
+    if (tempPath.length >= 3) {
+      if (!polygon) {
+        polygon = new google.maps.Polygon({
+          map: map,
+          paths: tempPath,
+          editable: true,
+          draggable: true,
+          strokeWeight: 2
+        });
+        attachPolygonEvents();
+      } else {
+        polygon.setPaths(tempPath);
+        syncGeom();
+      }
     }
 
-    if (!gj || gj.type !== 'Polygon' || !gj.coordinates || !gj.coordinates[0] || !gj.coordinates[0].length) return null;
+    setButtonsState();
+  }
 
-    const coords = gj.coordinates[0];
-    const noClose = (coords.length >= 2) ? coords.slice(0, -1) : coords;
-
-    return noClose.map(([lng, lat]) => ({ lat: parseFloat(lat), lng: parseFloat(lng) }));
-}
-
-function fitToLatLngs(latlngs){
-    const bounds = new google.maps.LatLngBounds();
-    latlngs.forEach(p => bounds.extend(p));
-    map.fitBounds(bounds);
-}
-
-// ✅ TABLE ACTION: Voir zone
-window.showCityZone = function(cityId){
-    const city = citiesById[cityId];
-    if (!city) return;
-
-    const latlngs = geojsonToLatLngs(city.geom);
-    if (!latlngs || latlngs.length < 3){
-        alert("GeoJSON invalide pour cette ville.");
-        return;
+  function finishDrawing() {
+    if (tempPath.length < 3) {
+      setInfo("Il faut au moins 3 points.");
+      return;
     }
+    drawingMode = false;
+    clearTemp();
+    setInfo("Polygone terminé. Tu peux déplacer les sommets.");
+    setButtonsState();
+  }
 
-    removeViewPolygon();
-    viewPolygon = new google.maps.Polygon({
-        map,
-        paths: latlngs,
-        editable: false,
-        clickable: false
-    });
+  function undo() {
+    if (drawingMode) {
+      if (!tempPath.length) return;
 
-    fitToLatLngs(latlngs);
-    setHint(`Zone affichée : <b>${city.name}</b>. Clique sur <b>Modifier</b> si tu veux l’éditer.`);
-    updateButtons();
-}
+      tempPath.pop();
+      const m = tempMarkers.pop();
+      if (m) m.setMap(null);
 
-// ✅ TABLE ACTION: Modifier
-window.editCity = function(cityId){
-    const city = citiesById[cityId];
-    if (!city) return;
+      if (tempPolyline) tempPolyline.setPath(tempPath);
 
-    formTitleEl().textContent = `Modifier la ville : ${city.name}`;
-    btnSubmitEl().innerHTML = `<i class="fas fa-save mr-1"></i> Mettre à jour`;
-    btnCancelEditEl().style.display = '';
-
-    editingCityIdEl().value = cityId;
-    methodFieldEl().value = 'PUT';
-    formEl().action = buildUpdateUrl(cityId);
-
-    nameEl().value = city.name || '';
-    codeVilleEl().value = city.code_ville || '';
-
-    removeViewPolygon();
-    isDrawing = false;
-
-    if (previewLine) previewLine.setPath([]);
-    clearPreviewMarkers();
-
-    selectedVertexIndex = null;
-    ensureSelectedMarker(); selectedVertexMarker.setPosition(null);
-
-    const latlngs = geojsonToLatLngs(city.geom);
-    if (!latlngs || latlngs.length < 3){
-        alert("GeoJSON invalide pour cette ville.");
-        return;
-    }
-
-    if (polygon) polygon.setMap(null);
-    polygon = new google.maps.Polygon({ map, paths: latlngs, editable: true });
-    bindPolygonEvents(polygon);
-    updateGeomFromPolygon();
-    fitToLatLngs(latlngs);
-
-    setHint(`Édition activée : <b>${city.name}</b>. Modifie les sommets puis clique sur <b>Mettre à jour</b>.`);
-    updateButtons();
-}
-
-btnCancelEditEl().addEventListener('click', function(){
-    resetFormToCreate();
-    clearAll();
-});
-
-// Init map
-function initMap(){
-    map = new google.maps.Map(document.getElementById('map'), {
-        center: { lat: 4.0511, lng: 9.7679 },
-        zoom: 12
-    });
-
-    previewLine = new google.maps.Polyline({ map, clickable:false });
-    ensureSelectedMarker();
-    selectedVertexMarker.setPosition(null);
-
-    map.addListener('click', (e) => {
-        if (!isDrawing) return;
-        const path = previewLine.getPath();
-        path.push(e.latLng);
-
-        syncPreviewMarkers();
-        selectedVertexIndex = path.getLength() - 1;
-        ensureSelectedMarker();
-        selectedVertexMarker.setPosition(e.latLng);
-
-        updateButtons();
-    });
-
-    btnStart().addEventListener('click', startDrawing);
-    btnUndo().addEventListener('click', undoLastPoint);
-    btnDeleteVertex().addEventListener('click', deleteSelectedVertex);
-    btnFinish().addEventListener('click', finishPolygon);
-    btnClear().addEventListener('click', () => { resetFormToCreate(); clearAll(); });
-
-    // Recharger old geom si exist
-    const existing = geomEl().value;
-    if (existing){
-        const latlngs = geojsonToLatLngs(existing);
-        if (latlngs && latlngs.length >= 3){
-            polygon = new google.maps.Polygon({ map, paths: latlngs, editable:true });
-            bindPolygonEvents(polygon);
-            fitToLatLngs(latlngs);
-            setHint("Polygone rechargé depuis l'ancien GeoJSON. Tu peux le modifier.");
+      if (polygon) {
+        if (tempPath.length >= 3) {
+          polygon.setPaths(tempPath);
+          syncGeom();
+        } else {
+          clearPolygon();
         }
+      }
+
+      setButtonsState();
+      return;
     }
 
-    updateButtons();
-}
+    if (!polygon) return;
+    const path = polygon.getPath();
+    if (path.getLength() > 0) path.removeAt(path.getLength() - 1);
+    setButtonsState();
+  }
 
-window.initMap = initMap;
+  function deleteSelectedVertex() {
+    if (!polygon || selectedVertex === null) return;
+    const path = polygon.getPath();
+    if (selectedVertex >= 0 && selectedVertex < path.getLength()) {
+      path.removeAt(selectedVertex);
+      selectedVertex = null;
+      setInfo("Sommet supprimé.");
+      setButtonsState();
+    }
+  }
+
+  function clearAll() {
+    drawingMode = false;
+    clearTemp();
+    clearPolygon();
+    setInfo("Zone effacée.");
+    setButtonsState();
+  }
+
+  function setFormCreateMode() {
+    if ($('ville_id')) $('ville_id').value = '';
+    if ($('_method')) $('_method').value = '';
+    if ($('villeForm')) $('villeForm').action = $('btnNewVille') ? $('btnNewVille').dataset.storeUrl : '';
+
+    if ($('code_ville')) $('code_ville').value = '';
+    if ($('name')) $('name').value = '';
+    if ($('villeSelect')) $('villeSelect').value = '';
+
+    clearAll();
+    setInfo("Nouvelle ville : dessine la zone puis enregistre.");
+    setButtonsState();
+  }
+
+  function setFormEditMode(v) {
+    if ($('ville_id')) $('ville_id').value = v.id || '';
+    if ($('_method')) $('_method').value = 'PUT';
+    if ($('villeForm')) $('villeForm').action = v.update_url;
+
+    if ($('code_ville')) $('code_ville').value = v.code || '';
+    if ($('name')) $('name').value = v.name || '';
+    if ($('villeSelect')) $('villeSelect').value = v.id;
+
+    loadPolygonFromVille(v.id, true);
+    setButtonsState();
+  }
+
+  function deleteVilleByUrl(url) {
+    if (!url) {
+      alert("URL de suppression introuvable.");
+      return;
+    }
+    if (!confirm("Supprimer cette ville ?")) return;
+
+    const f = document.createElement('form');
+    f.method = 'POST';
+    f.action = url;
+
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = '_token';
+    csrf.value = csrfToken();
+
+    const m = document.createElement('input');
+    m.type = 'hidden';
+    m.name = '_method';
+    m.value = 'DELETE';
+
+    f.appendChild(csrf);
+    f.appendChild(m);
+    document.body.appendChild(f);
+    f.submit();
+  }
+
+  function bindUI() {
+    if ($('btnStartDraw')) $('btnStartDraw').addEventListener('click', function (e) { e.preventDefault(); startDrawing(); });
+    if ($('btnFinishDraw')) $('btnFinishDraw').addEventListener('click', function (e) { e.preventDefault(); finishDrawing(); });
+    if ($('btnUndoPoint')) $('btnUndoPoint').addEventListener('click', function (e) { e.preventDefault(); undo(); });
+    if ($('btnDeletePoint')) $('btnDeletePoint').addEventListener('click', function (e) { e.preventDefault(); deleteSelectedVertex(); });
+    if ($('btnClearPolygon')) $('btnClearPolygon').addEventListener('click', function (e) { e.preventDefault(); clearAll(); });
+
+    if ($('btnNewVille')) $('btnNewVille').addEventListener('click', function (e) { e.preventDefault(); setFormCreateMode(); });
+
+    if ($('villeSelect')) $('villeSelect').addEventListener('change', function () {
+      const id = this.value;
+      if (!id) { setFormCreateMode(); return; }
+      const v = villesIndex.find(x => String(x.id) === String(id));
+      if (!v) { setFormCreateMode(); return; }
+      setFormEditMode(v);
+    });
+
+    if ($('btnDeleteVille')) $('btnDeleteVille').addEventListener('click', function (e) {
+      e.preventDefault();
+      const id = $('ville_id') ? $('ville_id').value : '';
+      if (!id) return;
+      const v = villesIndex.find(x => String(x.id) === String(id));
+      if (!v) return;
+      deleteVilleByUrl(v.delete_url);
+    });
+
+    document.querySelectorAll('.js-ville-edit').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const id = btn.getAttribute('data-id');
+        const v = villesIndex.find(x => String(x.id) === String(id));
+        if (v) setFormEditMode(v);
+      });
+    });
+
+    document.querySelectorAll('.js-ville-view').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const id = btn.getAttribute('data-id');
+        loadPolygonFromVille(id, false);
+      });
+    });
+
+    document.querySelectorAll('.js-ville-delete').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        deleteVilleByUrl(btn.getAttribute('data-delete-url'));
+      });
+    });
+
+    if ($('villeForm')) $('villeForm').addEventListener('submit', function (e) {
+      const geomVal = $('geom') ? ($('geom').value || '').trim() : '';
+      if (!geomVal) {
+        e.preventDefault();
+        alert("Dessine une zone (polygone) avant d’enregistrer.");
+      }
+    });
+
+    setButtonsState();
+  }
+
+  window.initMap = function () {
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: { lat: 4.0511, lng: 9.7679 },
+      zoom: 12
+    });
+
+    map.addListener('click', function (e) {
+      if (!drawingMode) return;
+      addPoint(e.latLng);
+    });
+
+    bindUI();
+    setInfo("Carte prête. Choisis une ville dans le select ou clique 'Nouvelle ville'.");
+  };
+})();
 </script>
 @endsection
