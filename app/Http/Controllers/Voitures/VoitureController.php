@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Voitures;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Voiture;
+use App\Models\Ville;
 use App\Models\User; // 👈 A ajouter
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use App\Services\GpsControlService;
 use Illuminate\Validation\Rule;
+use App\Models\SimGps;
+
 
 
 class VoitureController extends Controller
@@ -25,55 +28,59 @@ class VoitureController extends Controller
     /**
      * PAGE INDEX – Liste + Form
      */
-    public function index(Request $request)
-    {
-        $voitures = Voiture::all();
-        $voitureEdit = null;
+  public function index(Request $request)
+{
+    $voitures = Voiture::all();
+    $villes = Ville::orderBy('name')->get();
+    $voitureEdit = null;
 
-        if ($request->has('edit')) {
-            $voitureEdit = Voiture::find($request->edit);
-        }
-
-        return view('voitures.index', compact('voitures', 'voitureEdit'));
+    if ($request->has('edit')) {
+        $voitureEdit = Voiture::find($request->edit);
     }
+
+    return view('voitures.index', compact('voitures', 'voitureEdit','villes'));
+}
+
+
 
     /**
      * STORE
      */
     public function store(Request $request)
-    {
-        $validatedData = $request->validate([
-            'immatriculation'    => 'required|string|max:255',
-            'model'              => 'required|string|max:255',
-            'couleur'            => 'required|string|max:255',
-            'marque'             => 'required|string|max:255',
-            'sim_gps'            => 'nullable|string',
-            'mac_id_gps'         => 'required|string|max:255|unique:voitures,mac_id_gps',
-            'photo'              => 'nullable|image|mimes:jpeg,png,jpg,gif|max:8048',
-            'geofence_polygon'   => 'nullable|string',
-            'geofence_city_code' => 'nullable|string',
-            'geofence_city_name' => 'nullable|string',
-            'geofence_is_custom' => 'nullable|boolean',
-        ]);
+{
+    $validatedData = $request->validate([
+        'immatriculation'    => 'required|string|max:255',
+        'vin'                => 'nullable|string|max:255', // ✅ AJOUT
+        'model'              => 'required|string|max:255',
+        'couleur'            => 'required|string|max:255',
+        'marque'             => 'required|string|max:255',
+        'mac_id_gps'         => 'required|string|max:255|unique:voitures,mac_id_gps',
+        'photo'              => 'nullable|image|mimes:jpeg,png,jpg,gif|max:8048',
+        'geofence_polygon'   => 'nullable|string',
+        'geofence_city_code' => 'nullable|string',
+        'geofence_city_name' => 'nullable|string',
+        'geofence_is_custom' => 'nullable|boolean',
+    ]);
 
-        if ($request->hasFile('photo')) {
-            $validatedData['photo'] = $request->file('photo')->store('photos');
-        }
-
-        $validatedData['voiture_unique_id'] = 'VH-' . now()->format('Ym') . '-' . Str::random(6);
-
-        // 🟠 Conversion polygon JSON → tableau puis JSON string pour la BDD
-        $polygonArray = $this->extractPolygon($request->input('geofence_polygon'));
-        $validatedData['geofence_zone'] = $polygonArray ? json_encode($polygonArray) : null;
-
-        $validatedData['geofence_city_code'] = $request->input('geofence_city_code');
-        $validatedData['geofence_city_name'] = $request->input('geofence_city_name');
-        $validatedData['geofence_is_custom'] = $request->input('geofence_is_custom', 0);
-
-        Voiture::create($validatedData);
-
-        return redirect()->route('tracking.vehicles')->with('success', 'Véhicule ajouté avec succès.');
+    if ($request->hasFile('photo')) {
+        $validatedData['photo'] = $request->file('photo')->store('photos');
     }
+
+    $validatedData['voiture_unique_id'] = 'VH-' . now()->format('Ym') . '-' . Str::random(6);
+
+    $polygonArray = $this->extractPolygon($request->input('geofence_polygon'));
+    $validatedData['geofence_zone'] = $polygonArray ? json_encode($polygonArray) : null;
+
+    $validatedData['geofence_city_code'] = $request->input('geofence_city_code');
+    $validatedData['geofence_city_name'] = $request->input('geofence_city_name');
+    $validatedData['geofence_is_custom'] = $request->input('geofence_is_custom', 0);
+
+    Voiture::create($validatedData);
+
+    return redirect()->route('tracking.vehicles')->with('success', 'Véhicule ajouté avec succès.');
+}
+
+
 
     /**
      * UPDATE
@@ -82,10 +89,10 @@ class VoitureController extends Controller
 {
     $validatedData = $request->validate([
         'immatriculation'    => 'required|string|max:255',
+        'vin'                => 'nullable|string|max:255',
         'model'              => 'required|string|max:255',
         'couleur'            => 'required|string|max:255',
         'marque'             => 'required|string|max:255',
-        'sim_gps'            => 'nullable|string',
         'mac_id_gps'         => 'required|string|max:255|unique:voitures,mac_id_gps,' . $voiture->id,
         'photo'              => 'nullable|image|mimes:jpeg,png,jpg,gif|max:8048',
 
@@ -103,17 +110,14 @@ class VoitureController extends Controller
     $isCustom = (int) $request->input('geofence_is_custom', 0);
     $polygonArray = $this->extractPolygon($request->input('geofence_polygon'));
 
-    // ✅ si custom => doit être valide
     if ($isCustom === 1 && !$polygonArray) {
         return back()->with('error', 'Geofence personnalisé invalide : dessinez puis terminez le polygone.')->withInput();
     }
 
-    // ✅ ne mettre à jour geofence_zone QUE si on a un polygon valide
     if ($polygonArray) {
         $validatedData['geofence_zone'] = json_encode($polygonArray);
     }
 
-    // ✅ gestion city/custom cohérente
     $validatedData['geofence_is_custom'] = $isCustom;
 
     if ($isCustom === 1) {
@@ -124,7 +128,6 @@ class VoitureController extends Controller
         $validatedData['geofence_city_name'] = $request->input('geofence_city_name');
     }
 
-    // ⚠️ ne pas tenter de sauvegarder geofence_polygon (ce n’est pas une colonne)
     unset($validatedData['geofence_polygon']);
 
     $voiture->update($validatedData);
@@ -348,6 +351,31 @@ public function defineAlertsForVehicle(Request $request, Voiture $voiture)
     return redirect()
         ->route('tracking.vehicles')
         ->with('success', "Paramètres d’alertes mis à jour pour le véhicule {$voiture->immatriculation}.");
+}
+
+
+
+// api pour la recherche des GPS dans le formulaire d'ajout de vehicule
+public function searchSimGps(Request $request)
+{
+    $q = trim((string) $request->query('q', ''));
+
+    // On évite les requêtes inutiles
+    if (mb_strlen($q) < 2) {
+        return response()->json([]);
+    }
+
+    // On retourne uniquement mac_id (comme demandé)
+    $items = SimGps::query()
+        ->where('mac_id', 'like', '%' . $q . '%')
+        ->whereNotNull('mac_id')
+        ->select('mac_id')
+        ->distinct()
+        ->orderBy('mac_id')
+        ->limit(15)
+        ->get();
+
+    return response()->json($items);
 }
 
 }

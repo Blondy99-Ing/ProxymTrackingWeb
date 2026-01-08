@@ -176,7 +176,8 @@ Route::get('/voitures/{id}/trajets', [TrajetController::class, 'byVoiture'])->na
 // route pour la gestion des SIM dans les GPS
 Route::get('/gps-sim', [GpsSimController::class, 'index'])->name('gps_sim.index');
 Route::post('/gps-sim/sync', [GpsSimController::class, 'syncFromAccount'])->name('gps_sim.sync');
-Route::patch('/gps-sim/{simGps}/sim', [GpsSimController::class, 'updateSim'])->name('gps_sim.sim.update');
+Route::patch('/gps-sim/{simGps}/sim', [GpsSimController::class, 'updateSim'])->name('gps_sim.sim.update');Route::get('/sim-gps/search', [VoitureController::class, 'searchSimGps'])
+    ->name('sim_gps.search');
 
 
 //route ville 

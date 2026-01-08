@@ -1011,8 +1011,20 @@
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo&callback=initMap"
-        async></script>
+   <script>
+  // ✅ évite les erreurs sur les pages qui n'ont pas de carte
+  window.initMap = window.initMap || function () {
+    window.__gmapsReady = true;
+    window.dispatchEvent(new Event('gmaps:ready'));
+  };
+</script>
+
+<script
+  id="gmaps-js"
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo&libraries=geometry&loading=async&callback=initMap"
+  async defer>
+</script>
+
 
     <script>
     $(function() { // équivalent de $(document).ready()
