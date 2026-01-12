@@ -6,49 +6,59 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\GpsControlService;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class ProfileController extends Controller
 {
-    public function show($id, GpsControlService $gps)
+    public function show(int $id, GpsControlService $gps)
     {
         $user = User::with(['voitures.latestLocation'])->findOrFail($id);
         $vehiclesCount = $user->voitures->count();
 
-        // On cache un peu la liste device (évite d’appeler l’API à chaque refresh)
+        // Cache liste devices (évite API à chaque refresh)
         $deviceList = Cache::remember('gps18gps:device_list', now()->addSeconds(30), function () use ($gps) {
-            return $gps->getAccountDeviceList(); // API 18GPS
+            $list = $gps->getAccountDeviceList();
+
+            // Normaliser si jamais le service renvoie autre chose
+            if (!is_array($list)) return [];
+
+            // Si ton service renvoie un format {success:false,...}, adapte ici
+            if (isset($list['success']) && $list['success'] === false) return [];
+
+            return $list;
         });
 
         // Index par macid
         $devicesByMac = collect($deviceList)->keyBy(function ($d) {
-            return (string) ($d['macid'] ?? $d['mac_id_gps'] ?? '');
+            return (string) ($d['macid'] ?? $d['mac_id_gps'] ?? $d['mac_id'] ?? '');
         });
 
         $thresholdMinutes = (int) env('GPS_ONLINE_THRESHOLD_MINUTES', 10);
 
         $user->voitures->transform(function ($v) use ($gps, $devicesByMac, $thresholdMinutes) {
-            // ===== 1) Engine state depuis latestLocation.status (DB)
+
+            // 1) Engine state depuis latestLocation.status (DB)
             $statusRaw = optional($v->latestLocation)->status;
             $decoded = $gps->decodeEngineStatus($statusRaw);
             $v->engine_state = $decoded['engineState'] ?? 'UNKNOWN';
 
-            // ===== 2) GPS online/offline (API getDeviceList heart_time -> sinon fallback DB)
+            // 2) GPS online/offline (API getDeviceList heart_time -> sinon fallback DB)
             $device = $devicesByMac->get((string) $v->mac_id_gps);
-            $heart = $device['heart_time'] ?? null;
+            $apiHeart = is_array($device) ? ($device['heart_time'] ?? null) : null;
 
-            $v->gps_state = $this->computeGpsOnlineState($heart, optional($v->latestLocation)->heart_time, $thresholdMinutes);
+            $dbHeart = optional($v->latestLocation)->heart_time;
 
-            // ===== 3) Geofence coords (depuis geofence_zone : [[lng,lat],...])
+            $v->gps_state = $this->computeGpsOnlineState($apiHeart, $dbHeart, $thresholdMinutes);
+
+            // 3) Geofence coords (depuis geofence_zone : [[lng,lat],...])
             $coords = [];
             if (!empty($v->geofence_zone)) {
                 $tmp = json_decode($v->geofence_zone, true);
                 if (is_array($tmp)) {
-                    // normaliser en float
-                    $coords = array_values(array_filter(array_map(function ($pt) {
-                        if (!is_array($pt) || count($pt) < 2) return null;
-                        return [(float)$pt[0], (float)$pt[1]]; // [lng, lat]
-                    }, $tmp)));
+                    foreach ($tmp as $pt) {
+                        if (!is_array($pt) || count($pt) < 2) continue;
+                        $coords[] = [(float) $pt[0], (float) $pt[1]]; // [lng,lat]
+                    }
                 }
             }
             $v->geofence_coords = $coords;
@@ -65,26 +75,25 @@ class ProfileController extends Controller
 
         // 1) heart_time API (souvent timestamp en ms)
         if (!is_null($apiHeartTime) && $apiHeartTime !== '') {
-            // ms epoch ?
+
             if (is_numeric($apiHeartTime)) {
                 $heartMs = (int) $apiHeartTime;
                 $diffMin = (($now->timestamp * 1000) - $heartMs) / 60000;
                 return ($diffMin <= $thresholdMinutes) ? 'ONLINE' : 'OFFLINE';
             }
 
-            // sinon datetime parsable
             try {
-                $t = \Carbon\Carbon::parse($apiHeartTime);
+                $t = Carbon::parse($apiHeartTime);
                 return ($t->diffInMinutes($now) <= $thresholdMinutes) ? 'ONLINE' : 'OFFLINE';
             } catch (\Throwable $e) {
                 // ignore
             }
         }
 
-        // 2) fallback DB heart_time (souvent "YYYY-mm-dd HH:ii:ss")
+        // 2) fallback DB heart_time
         if (!empty($dbHeartTime)) {
             try {
-                $t = \Carbon\Carbon::parse($dbHeartTime);
+                $t = Carbon::parse($dbHeartTime);
                 return ($t->diffInMinutes($now) <= $thresholdMinutes) ? 'ONLINE' : 'OFFLINE';
             } catch (\Throwable $e) {
                 // ignore

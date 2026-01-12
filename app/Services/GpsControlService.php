@@ -3,67 +3,71 @@
 namespace App\Services;
 
 use App\Models\Location;
+use App\Models\SimGps;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * 18GPS / 18gps.net - ASMX Open API
+ * GpsControlService (18GPS / ASMX)
+ * --------------------------------------------------------------------
+ * ✅ IMPORTANT (ton besoin)
+ * Pour TOUTES les actions "par device" (macId) qui appellent l’API provider,
+ * le service va d’abord lire sim_gps.account_name (tracking|mobility),
+ * faire setAccount(account) => donc utiliser le BON token (cache isolé).
  *
- * Endpoints:
- * - {GPS_API_URL}/loginSystem
- * - {GPS_API_URL}/GetDate (method=SendCommands / GetSendCmdList / ClearCmdList / ...)
- *
- * Notes:
- * - Le token "mds" est obligatoire
- * - errorCode=403 => token expiré => relancer loginSystem puis retry
- * - ASMX peut renvoyer du JSON encapsulé dans <string>...</string> ou {"d":"...json..."}
+ * ⚠️ Aucun nom de méthode existante n’a été modifié.
  */
 class GpsControlService
 {
-    // Provider URLs
+    // Provider URLs (globales : identiques pour les 2 comptes)
     private string $apiBaseUrl;
     private string $loginUrl;
     private string $getDateUrl;
 
-    // Credentials
-    private string $loginName;
-    private string $loginPassword;
+    // Credentials (varient selon account)
+    private string $loginName = '';
+    private string $loginPassword = '';
+    private string $deviceCmdPassword = '';
 
-    // Device command password (souvent requis pour OPENRELAY/CLOSERELAY)
-    private string $deviceCmdPassword;
-
-    // Login params
+    // Login params (globales)
     private string $loginType;
     private string $language;
-    private string $timeZone; // parfois "8" ou "+08"
+    private string $timeZone;
     private string $apply;
     private int $isMd5;
     private string $providerLoginUrl;
 
     // HTTP/Cache
     private int $httpTimeoutSeconds;
-    private string $tokenCacheKey = 'gps18gps:mds_token';
+    private string $tokenCacheKey = 'gps18gps:tracking:mds_token';
     private int $tokenTtlSeconds;
 
-    // Status decoding (locations.status)
+    // Account courant
+    private string $account = 'tracking';
+
+    // Status decoding (moteur/relais)
     private int $accBitIndex;
     private int $relayBitIndex;
-    private bool $relayInvert;   // si ton bit est inversé (selon câblage)
-    private string $bitOrder;    // MSB (gauche->droite) ou LSB (droite->gauche)
+    private bool $relayInvert;
+    private string $bitOrder;
+
+    // Latest location / connectivity
+    private string $defaultMapType;
+    private string $defaultOption;
+    private int $offlineThresholdMinutes;
+
+    // Cache résolution compte par macId (pour éviter trop de hits DB)
+    private int $accountResolveTtlSeconds = 300; // 5 minutes
 
     public function __construct()
     {
+        // ✅ API identique
         $this->apiBaseUrl = rtrim((string) env('GPS_API_URL', 'http://apitest.18gps.net/GetDateServices.asmx'), '/');
         $this->loginUrl   = $this->apiBaseUrl . '/loginSystem';
         $this->getDateUrl = $this->apiBaseUrl . '/GetDate';
 
-        $this->loginName     = (string) env('GPS_LOGIN_NAME', '');
-        $this->loginPassword = (string) env('GPS_LOGIN_PASSWORD', '');
-
-        // Si pas défini, on reprend le même mot de passe que le login (souvent le cas chez vous)
-        $this->deviceCmdPassword = (string) env('GPS_DEVICE_CMD_PASSWORD', $this->loginPassword);
-
+        // ✅ params loginSystem (identiques)
         $this->loginType        = (string) env('GPS_LOGIN_TYPE', 'ENTERPRISE');
         $this->language         = (string) env('GPS_LANGUAGE', 'en');
         $this->timeZone         = (string) env('GPS_TIMEZONE', '8');
@@ -74,15 +78,114 @@ class GpsControlService
         $this->tokenTtlSeconds    = (int) env('GPS_TOKEN_TTL', 1140);
         $this->httpTimeoutSeconds = (int) env('GPS_HTTP_TIMEOUT', 20);
 
-        // Décodage statut (par défaut: comme ton code Node)
-        $this->accBitIndex   = (int) env('GPS_STATUS_ACC_INDEX', 0);   // bit 0 = ACC
-        $this->relayBitIndex = (int) env('GPS_STATUS_RELAY_INDEX', 2); // bit 2 = Oil/Relay
+        $this->accBitIndex   = (int) env('GPS_STATUS_ACC_INDEX', 0);
+        $this->relayBitIndex = (int) env('GPS_STATUS_RELAY_INDEX', 2);
         $this->relayInvert   = (bool) env('GPS_STATUS_RELAY_INVERT', false);
-        $this->bitOrder      = strtoupper((string) env('GPS_STATUS_BIT_ORDER', 'MSB')); // MSB recommandé
+        $this->bitOrder      = strtoupper((string) env('GPS_STATUS_BIT_ORDER', 'MSB'));
+
+        // ✅ defaults latest location/connectivity
+        $this->defaultMapType = (string) env('GPS_MAP_TYPE', 'BAIDU');
+        $this->defaultOption  = (string) env('GPS_MAP_OPTION', 'cn');
+        $this->offlineThresholdMinutes = (int) env('GPS_OFFLINE_THRESHOLD_MINUTES', 25);
+
+        $this->accountResolveTtlSeconds = (int) env('GPS_ACCOUNT_RESOLVE_TTL', 300);
+
+        // ✅ compte par défaut
+        $this->setAccount((string) env('GPS_DEFAULT_ACCOUNT', 'tracking'));
+    }
+
+    /**
+     * ✅ Switch du compte (tracking / mobility)
+     * - change loginName/loginPassword/deviceCmdPassword
+     * - isole le token cache par compte
+     */
+    public function setAccount(string $account): void
+    {
+        $account = strtolower(trim($account)) ?: strtolower((string) env('GPS_DEFAULT_ACCOUNT', 'tracking'));
+
+        if (!in_array($account, ['tracking', 'mobility'], true)) {
+            $account = strtolower((string) env('GPS_DEFAULT_ACCOUNT', 'tracking')) ?: 'tracking';
+        }
+
+        $key = strtoupper($account); // TRACKING / MOBILITY
+
+        $loginName = (string) env("GPS_{$key}_LOGIN_NAME", '');
+        $password  = (string) env("GPS_{$key}_LOGIN_PASSWORD", '');
+        $devicePwd = (string) env("GPS_{$key}_DEVICE_CMD_PASSWORD", $password);
+
+        // fallback compat si variables multi-compte manquantes
+        if ($loginName === '' || $password === '') {
+            $loginName = (string) env('GPS_LOGIN_NAME', '');
+            $password  = (string) env('GPS_LOGIN_PASSWORD', '');
+            $devicePwd = (string) env('GPS_DEVICE_CMD_PASSWORD', $password);
+        }
+
+        $this->account           = $account;
+        $this->loginName         = $loginName;
+        $this->loginPassword     = $password;
+        $this->deviceCmdPassword = $devicePwd;
+
+        // ✅ token isolé par compte
+        $this->tokenCacheKey = "gps18gps:{$this->account}:mds_token";
+    }
+
+    public function getAccount(): string
+    {
+        return $this->account;
     }
 
     /* =========================================================
-     * Helpers
+     * ✅ NOUVEAU (sans casser les méthodes) : Résolution compte par macId (DB sim_gps)
+     * ========================================================= */
+
+    /**
+     * Résout tracking|mobility depuis sim_gps.account_name.
+     * - Si pas trouvé ou invalide => null (et on NE CHANGE PAS de compte)
+     */
+    private function resolveAccountFromDbByMacId(string $macId): ?string
+    {
+        $macId = trim($macId);
+        if ($macId === '') return null;
+
+        $cacheKey = "gps18gps:macid_account:" . $macId;
+
+        try {
+            $acc = Cache::remember($cacheKey, $this->accountResolveTtlSeconds, function () use ($macId) {
+                $val = SimGps::query()
+                    ->where('mac_id', $macId)
+                    ->value('account_name');
+
+                $val = strtolower(trim((string) $val));
+                return in_array($val, ['tracking', 'mobility'], true) ? $val : '';
+            });
+
+            $acc = strtolower(trim((string) $acc));
+            return $acc !== '' ? $acc : null;
+        } catch (\Throwable $e) {
+            Log::warning('[GPS] resolveAccountFromDbByMacId failed', [
+                'macid' => $macId,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Garantit que le service est positionné sur le bon compte pour CE macId.
+     * - Si macId n’existe pas en DB => NO-OP (préserve un setAccount() explicite fait ailleurs)
+     */
+    private function ensureAccountForMacId(string $macId): void
+    {
+        $acc = $this->resolveAccountFromDbByMacId($macId);
+        if (!$acc) return;
+
+        if ($acc !== $this->account) {
+            $this->setAccount($acc);
+        }
+    }
+
+    /* =========================================================
+     * Helpers (ASMX + formats rows/data)
      * ========================================================= */
 
     private function nowIso(): string
@@ -91,17 +194,75 @@ class GpsControlService
     }
 
     /**
-     * ASMX peut renvoyer:
-     * - JSON direct
-     * - JSON dans <string>...</string>
-     * - JSON dans {"d":"{...json...}"}
-     * - ou texte/xml contenant du json
+     * Convertit epoch ms vers Carbon (timezone app).
      */
+    private function msToCarbon(?int $ms): ?\Carbon\Carbon
+    {
+        if (!$ms || $ms <= 0) return null;
+        try {
+            return \Carbon\Carbon::createFromTimestampMs($ms)->setTimezone(config('app.timezone'));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Retourne un tableau à partir d’une clé racine (ex: rows/data) même si :
+     *  - la clé change de casse
+     *  - la valeur est une string JSON
+     */
+    private function getRootArray(array $resp, array $keys): array
+    {
+        foreach ($keys as $k) {
+            if (!array_key_exists($k, $resp)) continue;
+
+            $v = $resp[$k];
+            if (is_array($v)) return $v;
+
+            if (is_string($v)) {
+                $j = json_decode($v, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($j)) return $j;
+            }
+
+            return [];
+        }
+        return [];
+    }
+
+    /**
+     * Chez toi, getDeviceList renvoie la liste sous "rows".
+     */
+    private function getProviderRows(array $resp): array
+    {
+        return $this->getRootArray($resp, ['rows', 'Rows', 'ROWS']);
+    }
+
+    /**
+     * Certains endpoints (notamment key/records) renvoient sous "data".
+     */
+    private function getProviderData(array $resp): array
+    {
+        return $this->getRootArray($resp, ['data', 'Data', 'DATA']);
+    }
+
+    /**
+     * Pour les endpoints key/records, le block est souvent data[0] (ou parfois rows[0]).
+     */
+    private function getProviderFirstBlockForKeyed(array $resp): ?array
+    {
+        $data = $this->getProviderData($resp);
+        if (!empty($data) && is_array($data[0] ?? null)) return $data[0];
+
+        $rows = $this->getProviderRows($resp);
+        if (!empty($rows) && is_array($rows[0] ?? null)) return $rows[0];
+
+        return null;
+    }
+
     private function decodeAsmxJson(string $body): ?array
     {
         $body = trim($body);
 
-        // 1) JSON direct
         $json = json_decode($body, true);
         if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
             if (isset($json['d']) && is_string($json['d'])) {
@@ -112,7 +273,6 @@ class GpsControlService
             return $json;
         }
 
-        // 2) JSON dans <string>...</string>
         if (preg_match('/<string[^>]*>(.*?)<\/string>/s', $body, $m)) {
             $inner = html_entity_decode($m[1], ENT_QUOTES | ENT_XML1, 'UTF-8');
             $inner = trim($inner);
@@ -121,7 +281,6 @@ class GpsControlService
             if (json_last_error() === JSON_ERROR_NONE && is_array($json)) return $json;
         }
 
-        // 3) fallback: strip tags puis JSON decode
         $stripped = html_entity_decode(strip_tags($body), ENT_QUOTES | ENT_XML1, 'UTF-8');
         $stripped = trim($stripped);
 
@@ -132,20 +291,27 @@ class GpsControlService
     }
 
     /**
-     * “Succès” provider : success=true/"true" + errorCode=200/0/""
+     * Vérifie le succès provider (tolérant: true/"true"/"True"/1/"1")
      */
     private function isProviderSuccess(array $data): bool
     {
         $success   = $data['success'] ?? null;
         $errorCode = (string) ($data['errorCode'] ?? ($data['code'] ?? ''));
 
-        return ($success === true || $success === 'true')
-            && ($errorCode === '' || $errorCode === '200' || $errorCode === '0');
+        $errorCode = trim($errorCode);
+
+        $successOk = false;
+        if ($success === true || $success === 1 || $success === '1') {
+            $successOk = true;
+        } elseif (is_string($success)) {
+            $successOk = strtolower(trim($success)) === 'true';
+        }
+
+        $errorOk = ($errorCode === '' || $errorCode === '200' || $errorCode === '0');
+
+        return $successOk && $errorOk;
     }
 
-    /**
-     * GET wrapper robuste (ASMX)
-     */
     private function getWithParams(string $url, array $params): array
     {
         try {
@@ -154,6 +320,7 @@ class GpsControlService
 
             if (!$res->successful()) {
                 Log::warning('[GPS] HTTP non OK', [
+                    'account' => $this->account,
                     'url' => $url,
                     'status' => $res->status(),
                     'body' => $body,
@@ -187,6 +354,7 @@ class GpsControlService
             ];
         } catch (\Throwable $e) {
             Log::error('[GPS] Exception HTTP', [
+                'account' => $this->account,
                 'url' => $url,
                 'params' => $params,
                 'error' => $e->getMessage(),
@@ -201,7 +369,9 @@ class GpsControlService
     }
 
     /**
-     * Appel générique GetDate?method=XXX avec gestion token + retry 403.
+     * Appel générique vers /GetDate?method=...&mds=...
+     * - Injecte automatiquement le token mds (loginGps)
+     * - Retry 1 fois si errorCode=403 (token expiré)
      */
     private function callGetDate(string $method, array $params, bool $retryOn403 = true): array
     {
@@ -210,7 +380,7 @@ class GpsControlService
             return [
                 'success' => 'false',
                 'errorCode' => '401',
-                'errorDescribe' => 'Token (mds) indisponible (login échoué)',
+                'errorDescribe' => "Token (mds) indisponible (login échoué) [account={$this->account}]",
                 'data' => [],
             ];
         }
@@ -247,7 +417,10 @@ class GpsControlService
         }
 
         if ($this->loginName === '' || $this->loginPassword === '') {
-            Log::error('[GPS] Identifiants manquants: GPS_LOGIN_NAME / GPS_LOGIN_PASSWORD');
+            Log::error('[GPS] Identifiants manquants', [
+                'account' => $this->account,
+                'hint_env' => "GPS_" . strtoupper($this->account) . "_LOGIN_NAME / PASSWORD",
+            ]);
             return null;
         }
 
@@ -271,6 +444,7 @@ class GpsControlService
         }
 
         Log::warning('[GPS] Login échoué', [
+            'account' => $this->account,
             'errorCode' => $data['errorCode'] ?? null,
             'errorDescribe' => $data['errorDescribe'] ?? ($data['msg'] ?? null),
             'raw' => $data['raw'] ?? $data,
@@ -285,20 +459,14 @@ class GpsControlService
     }
 
     /* =========================================================
-     * 2) SEND COMMANDS (2 paramètres)
+     * 2) SEND COMMANDS
      * ========================================================= */
 
-    /**
-     * ✅ EXACTEMENT 2 PARAMÈTRES (macId, command)
-     */
     public function sendCommand(string $macId, string $command): array
     {
         return $this->sendCommandRaw($macId, $command, '');
     }
 
-    /**
-     * Pour les commandes qui exigent un paramètre (ex: PASSTHROUGH)
-     */
     public function sendCommandWithParam(string $macId, string $command, string $param): array
     {
         return $this->sendCommandRaw($macId, $command, $param);
@@ -306,6 +474,9 @@ class GpsControlService
 
     private function sendCommandRaw(string $macId, string $command, string $param = ''): array
     {
+        // ✅ AUTO-ACCOUNT: bascule selon sim_gps.account_name (si dispo)
+        $this->ensureAccountForMacId($macId);
+
         $macId   = trim($macId);
         $command = strtoupper(trim($command));
 
@@ -313,18 +484,17 @@ class GpsControlService
             'macid'    => $macId,
             'cmd'      => $command,
             'param'    => $param,
-            'pwd'      => $this->deviceCmdPassword, // IMPORTANT pour OPEN/CLOSE relay
+            'pwd'      => $this->deviceCmdPassword,
             'sendTime' => $this->nowIso(),
         ];
 
         return $this->callGetDate('SendCommands', $payload, true);
     }
 
-    // Wrappers pratiques (facultatifs)
+    // Wrappers
     public function openRelay(string $macId): array { return $this->sendCommand($macId, 'OPENRELAY'); }
     public function closeRelay(string $macId): array { return $this->sendCommand($macId, 'CLOSERELAY'); }
 
-    // Compatibilité avec ton ancien test tinker
     public function cutEngine(string $macId): array { return $this->closeRelay($macId); }
     public function restoreEngine(string $macId): array { return $this->openRelay($macId); }
 
@@ -345,7 +515,7 @@ class GpsControlService
     }
 
     /* =========================================================
-     * 3) Command history (GetSendCmdList) + Clear (ClearCmdList)
+     * 3) HISTORY (commandes)
      * ========================================================= */
 
     public function getSendCmdList(
@@ -354,6 +524,9 @@ class GpsControlService
         ?string $startTime = null,
         ?string $endTime = null
     ): array {
+        // ✅ AUTO-ACCOUNT
+        $this->ensureAccountForMacId($macId);
+
         $payload = [
             'macid' => trim($macId),
             'cmdNo' => $cmdNo ? trim($cmdNo) : '',
@@ -366,35 +539,29 @@ class GpsControlService
 
     public function clearCmdList(string $macId): array
     {
+        // ✅ AUTO-ACCOUNT
+        $this->ensureAccountForMacId($macId);
+
         return $this->callGetDate('ClearCmdList', ['macid' => trim($macId)], true);
     }
 
     /* =========================================================
-     * 4) STATUT MOTEUR depuis la DB (locations.status)
+     * 4) STATUT MOTEUR depuis DB
      * ========================================================= */
 
-    /**
-     * Convertit un statut en "bit-string" exploitable.
-     * - si c'est déjà du binaire ("10100000") => ok
-     * - si c'est un entier => convertit en binaire (pad)
-     * - si c'est du hex "0x1F" => convertit en binaire
-     */
     private function normalizeStatusToBits(?string $status): ?string
     {
         if ($status === null) return null;
         $s = trim($status);
         if ($s === '') return null;
 
-        // déjà binaire
         if (preg_match('/^[01]{3,}$/', $s)) return $s;
 
-        // hex
         if (preg_match('/^0x[0-9a-f]+$/i', $s)) {
             $n = hexdec(substr($s, 2));
             return str_pad(decbin($n), 16, '0', STR_PAD_LEFT);
         }
 
-        // entier décimal
         if (preg_match('/^\d+$/', $s)) {
             $n = (int) $s;
             return str_pad(decbin($n), 16, '0', STR_PAD_LEFT);
@@ -403,11 +570,6 @@ class GpsControlService
         return null;
     }
 
-    /**
-     * Lit un bit à un index selon l'ordre choisi.
-     * - MSB: index 0 = 1er caractère (gauche->droite)  ✅ comme ton code Node
-     * - LSB: index 0 = dernier caractère (droite->gauche)
-     */
     private function getBit(?string $bits, int $index): ?bool
     {
         if (!$bits || $index < 0) return null;
@@ -415,38 +577,23 @@ class GpsControlService
         $len = strlen($bits);
         if ($len === 0) return null;
 
-        if ($this->bitOrder === 'LSB') {
-            $pos = $len - 1 - $index;
-        } else {
-            $pos = $index; // MSB
-        }
+        $pos = ($this->bitOrder === 'LSB') ? ($len - 1 - $index) : $index;
 
         if ($pos < 0 || $pos >= $len) return null;
 
         return $bits[$pos] === '1';
     }
 
-    /**
-     * Décode le status (colonne locations.status) et renvoie l'état moteur.
-     * Par défaut:
-     * - bit 0 => ACC
-     * - bit 2 => Relay/Oil
-     */
     public function decodeEngineStatus(?string $status): array
     {
-        $bits = $this->normalizeStatusToBits($status);
-
-        $acc = $this->getBit($bits, $this->accBitIndex);
+        $bits  = $this->normalizeStatusToBits($status);
+        $acc   = $this->getBit($bits, $this->accBitIndex);
         $relay = $this->getBit($bits, $this->relayBitIndex);
 
         if ($relay !== null && $this->relayInvert) {
             $relay = !$relay;
         }
 
-        // Interprétation “métier” (simple et utile)
-        // - relay=false => moteur coupé (immobilizer actif)
-        // - relay=true + acc=true => moteur ON
-        // - relay=true + acc=false => contact OFF mais autorisation OK
         $engineState = 'UNKNOWN';
         if ($relay === false) $engineState = 'CUT';
         elseif ($relay === true && $acc === true) $engineState = 'ON';
@@ -456,15 +603,11 @@ class GpsControlService
             'status_raw'   => $status,
             'status_bits'  => $bits,
             'accState'     => $acc,
-            'relayState'   => $relay,      // oil/relay (après inversion éventuelle)
-            'engineState'  => $engineState // ON | OFF | CUT | UNKNOWN
+            'relayState'   => $relay,
+            'engineState'  => $engineState,
         ];
     }
 
-    /**
-     * Récupère le dernier enregistrement Location pour un mac_id_gps,
-     * puis décode l'état moteur depuis la colonne status.
-     */
     public function getEngineStatusFromLastLocation(string $macId): array
     {
         $loc = Location::query()
@@ -497,116 +640,347 @@ class GpsControlService
         ];
     }
 
+    /* =========================================================
+     * 5) DEVICE LIST
+     * ========================================================= */
 
+    private function extractKeyedRecords(array $resp): array
+    {
+        if (!$this->isProviderSuccess($resp)) return [];
 
+        $block = $this->getProviderFirstBlockForKeyed($resp);
+        if (!is_array($block)) return [];
 
+        $key     = $block['key'] ?? null;
+        $records = $block['records'] ?? null;
 
+        if (!is_array($key) || !is_array($records)) return [];
 
+        $out = [];
+        foreach ($records as $row) {
+            if (!is_array($row)) continue;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* =========================================================
- * 5) DEVICE LIST (tous les GPS du compte)
- * ========================================================= */
-
-/**
- * Convertit la réponse { data:[{key:{field:index}, records:[[...],[...]]}] }
- * en tableau d'objets associatifs.
- */
-private function extractKeyedRecords(array $resp): array
-{
-    if (!$this->isProviderSuccess($resp)) {
-        return [];
-    }
-
-    $block = $resp['data'][0] ?? null;
-    $key = $block['key'] ?? null;
-    $records = $block['records'] ?? null;
-
-    if (!is_array($key) || !is_array($records)) {
-        return [];
-    }
-
-    $out = [];
-    foreach ($records as $row) {
-        if (!is_array($row)) continue;
-
-        $item = [];
-        foreach ($key as $field => $idx) {
-            $item[$field] = $row[$idx] ?? null;
+            $item = [];
+            foreach ($key as $field => $idx) {
+                $item[$field] = $row[$idx] ?? null;
+            }
+            $out[] = $item;
         }
-        $out[] = $item;
+
+        return $out;
     }
 
-    return $out;
-}
+    /**
+     * ✅ Liste normalisée des devices du compte courant.
+     */
+    public function getAccountDeviceList(): array
+    {
+        $resp = $this->callGetDate('getDeviceList', [], true);
+        if (!$this->isProviderSuccess($resp)) return [];
 
-/**
- * Liste les GPS du compte (unité courante) => sans sous-unités.
- */
-public function getAccountDeviceList(): array
-{
-    $resp = $this->callGetDate('getDeviceList', [], true);
+        // ✅ format "rows" (ton cas)
+        $rows = $this->getProviderRows($resp);
+        if (!empty($rows)) return $rows;
 
-    if (!$this->isProviderSuccess($resp)) {
+        // 🔁 fallback si un jour le provider renvoie "data"
+        $data = $this->getProviderData($resp);
+        if (!empty($data)) {
+            $first = $data[0] ?? null;
+            if (is_array($first) && (isset($first['objectid']) || isset($first['macid']))) return $data;
+            return $this->extractKeyedRecords($resp);
+        }
+
         return [];
     }
 
-    // ✅ Cas 1: data = liste d'objets [{objectid, macid, ...}, ...]
-    if (isset($resp['data']) && is_array($resp['data'])) {
-        $first = $resp['data'][0] ?? null;
-        if (is_array($first) && (array_key_exists('objectid', $first) || array_key_exists('macid', $first))) {
-            return $resp['data'];
+    public function getAccountDeviceListRaw(): array
+    {
+        return $this->callGetDate('getDeviceList', [], true);
+    }
+
+    public function getSubUnitDeviceList(string $unitId, string $mapType = ''): array
+    {
+        $payload = [
+            'id' => trim($unitId),
+            'mapType' => $mapType,
+        ];
+
+        $resp = $this->callGetDate('getDeviceListByCustomId', $payload, true);
+
+        $rows = $this->getProviderRows($resp);
+        if (!empty($rows)) return $rows;
+
+        return $this->extractKeyedRecords($resp);
+    }
+
+    public function getSubUnitDeviceListRaw(string $unitId, string $mapType = ''): array
+    {
+        $payload = ['id' => trim($unitId), 'mapType' => $mapType];
+        return $this->callGetDate('getDeviceListByCustomId', $payload, true);
+    }
+
+    /* =========================================================
+     * 6) Latest Location (getUserAndGpsInfoByIDsUtcNew)
+     * ========================================================= */
+
+    public function getLatestLocationRawByUserId(string $userId, ?string $mapType = null, ?string $option = null): array
+    {
+        $userId  = trim($userId);
+        $mapType = $mapType !== null ? trim($mapType) : $this->defaultMapType;
+        $option  = $option  !== null ? trim($option)  : $this->defaultOption;
+
+        if ($userId === '') {
+            return [
+                'success' => 'false',
+                'errorCode' => '400',
+                'errorDescribe' => 'user_id is required',
+                'data' => [],
+            ];
+        }
+
+        return $this->callGetDate('getUserAndGpsInfoByIDsUtcNew', [
+            'mapType' => $mapType,
+            'option'  => $option,
+            'user_id' => $userId,
+        ], true);
+    }
+
+    public function getLatestLocationByUserId(string $userId, ?string $mapType = null, ?string $option = null): ?array
+    {
+        $resp = $this->getLatestLocationRawByUserId($userId, $mapType, $option);
+        if (!$this->isProviderSuccess($resp)) return null;
+
+        $items = $this->extractKeyedRecords($resp);
+        if (!empty($items)) return $items[0] ?? null;
+
+        $data = $this->getProviderData($resp);
+        $first = $data[0] ?? null;
+        if (is_array($first)) return $first;
+
+        return null;
+    }
+
+    public function resolveUserIdFromDeviceList(string $macId, ?array $deviceList = null): ?string
+    {
+        $macId = trim($macId);
+        if ($macId === '') return null;
+
+        // ✅ AUTO-ACCOUNT (si on appelle cette méthode directement)
+        $this->ensureAccountForMacId($macId);
+
+        $deviceList = $deviceList ?? $this->getAccountDeviceList();
+
+        foreach ($deviceList as $d) {
+            if (!is_array($d)) continue;
+
+            $dMac = (string) ($d['macid'] ?? '');
+            if ($dMac === $macId) {
+                $id = (string) ($d['user_id'] ?? ($d['objectid'] ?? ''));
+                $id = trim($id);
+                return $id !== '' ? $id : null;
+            }
+        }
+
+        return null;
+    }
+
+    public function getLatestLocationByMacId(string $macId, ?string $mapType = null, ?string $option = null): ?array
+    {
+        // ✅ AUTO-ACCOUNT
+        $this->ensureAccountForMacId($macId);
+
+        $devices = $this->getAccountDeviceList();
+        $userId = $this->resolveUserIdFromDeviceList($macId, $devices);
+        if (!$userId) return null;
+
+        return $this->getLatestLocationByUserId($userId, $mapType, $option);
+    }
+
+    /* =========================================================
+     * 7) Online/Offline + Durée offline
+     * ========================================================= */
+
+    public function decodeOfflineCodeFromDeviceList($offlineCode): array
+    {
+        $code = (string) $offlineCode;
+
+        return match ($code) {
+            '0' => ['state' => 'OFFLINE', 'is_online' => false],
+            '1' => ['state' => 'ONLINE_STATIONARY', 'is_online' => true],
+            '2' => ['state' => 'ONLINE_MOVING', 'is_online' => true],
+            default => ['state' => 'UNKNOWN', 'is_online' => null],
+        };
+    }
+
+    public function computeConnectivityFromLatestRecord(array $record, ?int $thresholdMinutes = null): array
+    {
+        $thresholdMinutes = $thresholdMinutes ?? $this->offlineThresholdMinutes;
+        $thresholdMs = max(1, $thresholdMinutes) * 60 * 1000;
+
+        $serverMs = isset($record['server_time']) ? (int) $record['server_time'] : 0;
+        $heartMs  = isset($record['heart_time']) ? (int) $record['heart_time'] : 0;
+        $dtMs     = isset($record['datetime']) ? (int) $record['datetime'] : 0;
+
+        $speed = 0.0;
+        if (isset($record['su'])) $speed = (float) $record['su'];
+        elseif (isset($record['speed'])) $speed = (float) $record['speed'];
+
+        if ($serverMs <= 0 || $heartMs <= 0) {
+            return [
+                'state' => 'UNKNOWN',
+                'is_online' => null,
+                'reason' => 'missing server_time or heart_time',
+                'threshold_minutes' => $thresholdMinutes,
+                'server_time_ms' => $serverMs ?: null,
+                'heart_time_ms' => $heartMs ?: null,
+            ];
+        }
+
+        $offlineMs = $serverMs - $heartMs;
+        $staticMs  = ($dtMs > 0) ? ($serverMs - $dtMs) : null;
+
+        $isOffline = $offlineMs >= $thresholdMs;
+        $state = $isOffline ? 'OFFLINE' : (($speed == 0.0) ? 'ONLINE_STATIONARY' : 'ONLINE_MOVING');
+
+        if ($speed == -9.0 && $isOffline) {
+            $state = 'DISABLED';
+        }
+
+        $expireMs = isset($record['expire_date']) ? (int) $record['expire_date'] : 0;
+        $isExpired = null;
+        $expiredSinceMs = null;
+        if ($expireMs > 0) {
+            $isExpired = $serverMs > $expireMs;
+            if ($isExpired) $expiredSinceMs = $serverMs - $expireMs;
+        }
+
+        return [
+            'state' => $state,
+            'is_online' => !$isOffline,
+            'threshold_minutes' => $thresholdMinutes,
+
+            'offline_time_ms' => $offlineMs,
+            'offline_time_seconds' => (int) floor($offlineMs / 1000),
+
+            'static_time_ms' => $staticMs,
+            'static_time_seconds' => $staticMs !== null ? (int) floor($staticMs / 1000) : null,
+
+            'offline_since_ms' => $heartMs,
+            'offline_since_at' => $this->msToCarbon($heartMs)?->toDateTimeString(),
+
+            'server_time_ms' => $serverMs,
+            'server_time_at' => $this->msToCarbon($serverMs)?->toDateTimeString(),
+
+            'expire_date_ms' => $expireMs ?: null,
+            'expire_date_at' => $expireMs ? $this->msToCarbon($expireMs)?->toDateTimeString() : null,
+            'is_expired' => $isExpired,
+            'expired_since_ms' => $expiredSinceMs,
+            'expired_since_seconds' => $expiredSinceMs !== null ? (int) floor($expiredSinceMs / 1000) : null,
+        ];
+    }
+
+    public function getConnectivityByUserId(string $userId, ?string $mapType = null, ?string $option = null, ?int $thresholdMinutes = null): array
+    {
+        $record = $this->getLatestLocationByUserId($userId, $mapType, $option);
+
+        if (!$record) {
+            return [
+                'success' => false,
+                'message' => 'No latest location record (or provider error)',
+                'user_id' => $userId,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'user_id' => $userId,
+            'record' => $record,
+            'connectivity' => $this->computeConnectivityFromLatestRecord($record, $thresholdMinutes),
+        ];
+    }
+
+    public function getConnectivityByMacId(string $macId, ?string $mapType = null, ?string $option = null, ?int $thresholdMinutes = null): array
+    {
+        // ✅ AUTO-ACCOUNT
+        $this->ensureAccountForMacId($macId);
+
+        $devices = $this->getAccountDeviceList();
+        $userId = $this->resolveUserIdFromDeviceList($macId, $devices);
+
+        if (!$userId) {
+            return [
+                'success' => false,
+                'message' => 'Device not found in device list (cannot resolve user_id)',
+                'macid' => $macId,
+            ];
+        }
+
+        $resp = $this->getConnectivityByUserId($userId, $mapType, $option, $thresholdMinutes);
+        $resp['macid'] = $macId;
+        return $resp;
+    }
+
+    /* =========================================================
+     * 8) Persistance DB (Location)
+     * ========================================================= */
+
+    public function saveLatestLocationRecordToDb(array $record, ?string $macIdFallback = null): ?Location
+    {
+        try {
+            $mac = (string) ($record['sim_id'] ?? ($record['macid'] ?? ''));
+            $mac = trim($mac) !== '' ? trim($mac) : (string) $macIdFallback;
+
+            if (!$mac) {
+                Log::warning('[GPS] saveLatestLocationRecordToDb: mac_id_gps missing', [
+                    'account' => $this->account,
+                    'record_keys' => array_keys($record),
+                ]);
+                return null;
+            }
+
+            return Location::create([
+                'sys_time'   => $record['sys_time'] ?? null,
+                'user_name'  => $record['user_name'] ?? null,
+                'longitude'  => $record['jingdu'] ?? ($record['longitude'] ?? null),
+                'latitude'   => $record['weidu'] ?? ($record['latitude'] ?? null),
+                'datetime'   => $record['datetime'] ?? null,
+                'heart_time' => $record['heart_time'] ?? null,
+                'speed'      => $record['su'] ?? ($record['speed'] ?? null),
+                'status'     => $record['status'] ?? null,
+                'direction'  => $record['hangxiang'] ?? ($record['direction'] ?? null),
+                'mac_id_gps' => $mac,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('[GPS] saveLatestLocationRecordToDb exception', [
+                'account' => $this->account,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
         }
     }
 
-    // ✅ Cas 2: data[0] = { key:{...}, records:[[...],[...]] }
-    return $this->extractKeyedRecords($resp);
-}
+    public function syncLatestLocationByMacId(string $macId, ?string $mapType = null, ?string $option = null): array
+    {
+        // ✅ AUTO-ACCOUNT (via getLatestLocationByMacId)
+        $record = $this->getLatestLocationByMacId($macId, $mapType, $option);
+        if (!$record) {
+            return [
+                'success' => false,
+                'message' => 'No latest location record',
+                'macid' => $macId,
+            ];
+        }
 
+        $connectivity = $this->computeConnectivityFromLatestRecord($record, null);
+        $saved = $this->saveLatestLocationRecordToDb($record, $macId);
 
-/**
- * Liste les GPS d'une sous-unité (si tu as des subordinates).
- */
-public function getSubUnitDeviceList(string $unitId, string $mapType = ''): array
-{
-    $payload = [
-        'id' => trim($unitId),
-        'mapType' => $mapType, // '' = coordonnées originales (WGS84 souvent)
-    ];
-
-    $resp = $this->callGetDate('getDeviceListByCustomId', $payload, true);
-    return $this->extractKeyedRecords($resp);
-}
-
-/**
- * Version RAW (utile pour debug si ça renvoie [])
- */
-public function getAccountDeviceListRaw(): array
-{
-    return $this->callGetDate('getDeviceList', [], true);
-}
-
-public function getSubUnitDeviceListRaw(string $unitId, string $mapType = ''): array
-{
-    $payload = ['id' => trim($unitId), 'mapType' => $mapType];
-    return $this->callGetDate('getDeviceListByCustomId', $payload, true);
-}
-
-
+        return [
+            'success' => true,
+            'macid' => $macId,
+            'record' => $record,
+            'connectivity' => $connectivity,
+            'saved' => (bool) $saved,
+            'location_id' => $saved?->id,
+        ];
+    }
 }

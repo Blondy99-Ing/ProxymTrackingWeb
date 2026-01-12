@@ -61,7 +61,7 @@
                                     
                                     <span style="color: var(--color-text);">
                                         {{ $user->nom }} {{ $user->prenom }} 
-                                        <span class="text-secondary text-sm font-light">(ID: {{ $user->user_unique_id }})</span>
+                                        <span class="text-secondary text-sm font-light"></span>
                                     </span>
                                 </label>
                             @endforeach
@@ -93,7 +93,7 @@
                                     
                                     <span style="color: var(--color-text);">
                                         {{ $voiture->immatriculation }} - {{ $voiture->marque }} 
-                                        <span class="text-secondary text-sm font-light">(ID: {{ $voiture->voiture_unique_id }})</span>
+                                        <span class="text-secondary text-sm font-light"></span>
                                     </span>
                                 </label>
                             @endforeach

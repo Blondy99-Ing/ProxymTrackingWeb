@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 
 class Voiture extends Model
 {
@@ -33,6 +34,19 @@ class Voiture extends Model
         'geofence_radius',
         'geofence_zone', 
     ];
+
+
+
+     // Optionnel si tu veux qu'il sorte automatiquement en JSON
+    protected $appends = ['photo_url'];
+
+    public function getPhotoUrlAttribute(): ?string
+    {
+        if (!$this->photo) return null;
+
+        $disk = config('media.disk', 'public');
+        return Storage::disk($disk)->url($this->photo);
+    }
 
 
 

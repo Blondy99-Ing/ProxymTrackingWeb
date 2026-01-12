@@ -44,18 +44,19 @@
                 <thead>
                     {{-- Champ de recherche DANS le tableau (auto, sans bouton) --}}
                     <tr>
-                        <th colspan="5">
+                        {{-- ✅ 6 colonnes maintenant --}}
+                        <th colspan="6">
                             <form id="gpsSimSearchForm" method="GET" action="{{ route('gps_sim.index') }}">
                                 <input id="gpsSimSearchInput" type="text" name="q" value="{{ $q ?? request('q') }}"
-                                    class="ui-input-style" placeholder="Rechercher (mac_id / SIM / statut)..."
+                                    class="ui-input-style" placeholder="Rechercher (mac_id / SIM / compte / statut)..."
                                     autocomplete="off" />
-
                             </form>
                         </th>
                     </tr>
 
                     <tr>
                         <th>MAC ID</th>
+                        <th>Compte</th> {{-- ✅ NEW --}}
                         <th>Statut</th>
                         <th>SIM</th>
                         <th>Dernière MAJ</th>
@@ -70,8 +71,31 @@
                         {{-- MAC ID --}}
                         <td>{{ $item->mac_id }}</td>
 
+                        {{-- ✅ COMPTE --}}
+                        <td>
+                            @php
+                                $acc = strtolower(trim((string)($item->account_name ?? '')));
+                            @endphp
+
+                            @if($acc === '')
+                                <span class="text-secondary">—</span>
+                            @else
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold
+                                    @if($acc === 'tracking')
+                                        bg-blue-500 text-white
+                                    @elseif($acc === 'mobility')
+                                        bg-purple-600 text-white
+                                    @else
+                                        bg-gray-400 text-white
+                                    @endif
+                                ">
+                                    <i class="fas fa-user-circle mr-1 text-[10px]"></i>
+                                    {{ $item->account_name }}
+                                </span>
+                            @endif
+                        </td>
+
                         {{-- ✅ STATUT : Moteur + GPS --}}
-                        {{-- ✅ STATUT : Moteur + GPS en display:flex --}}
                         <td>
                             @php
                             $engine = $item->engine_state; // CUT / ON / OFF / UNKNOWN / null
@@ -128,7 +152,6 @@
                             @endif
                         </td>
 
-
                         {{-- SIM --}}
                         <td>
                             @if(!empty($item->sim_number))
@@ -141,7 +164,7 @@
                         {{-- Dernière MAJ --}}
                         <td>{{ optional($item->created_at)->format('Y-m-d H:i') }}</td>
 
-                        {{-- Actions (inchangé) --}}
+                        {{-- Actions --}}
                         <td class="space-x-1 whitespace-nowrap">
                             <button type="button" class="btn-secondary" title="Ajouter / Modifier la SIM" onclick="openSimModal(
                         {{ (int)$item->id }},
@@ -292,7 +315,6 @@
     window.openSimModal = function(id, macId, simNumber) {
         if (!formSim) return;
 
-        // ✅ force POST + _method PATCH (évite PUT)
         formSim.setAttribute('method', 'POST');
         if (methodInput) methodInput.value = 'PATCH';
 

@@ -3,10 +3,9 @@
 @section('title', 'Gestion des Employés')
 
 @section('content')
-
 <div class="space-y-8 p-4 md:p-8">
 
-    {{-- Bande de navigation secondaire (Dark Mode Ready) --}}
+    {{-- Navigation --}}
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-4"
         style="border-color: var(--color-border-subtle);">
         <div class="flex mt-4 sm:mt-0 space-x-4">
@@ -20,7 +19,6 @@
             </a>
         </div>
     </div>
-
 
     <div class="ui-card">
         <div class="flex justify-between items-center mb-6">
@@ -46,46 +44,61 @@
                 </thead>
                 <tbody>
                     @foreach($employes ?? [] as $employe)
-                    <tr class="hover:bg-hover-subtle transition-colors">
-                        <td>{{ $employe->role?->name ?? '-' }}</td>
-                        <td style="color: var(--color-text);">{{ $employe->nom }} {{ $employe->prenom }}</td>
-                        <td class="text-secondary">{{ $employe->phone }}</td>
-                        <td>{{ $employe->ville }}</td>
-                        <td>{{ $employe->quartier }}</td>
-                        <td>{{ $employe->email }}</td>
-                        <td>
-                            <img src="{{ $employe->photo ? asset('storage/' . $employe->photo) : 'https://placehold.co/40x40/F58220/ffffff?text=NP' }}"
-                                alt="Photo" class="h-10 w-10 object-cover rounded-full border border-border-subtle">
-                        </td>
-                        <td class="space-x-2 whitespace-nowrap">
-                            {{-- Bouton Modifier --}}
-                            <button
-                                class="text-yellow-500 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-200 p-2 openEditModalBtn"
-                                data-id="{{ $employe->id }}"
-                                data-nom="{{ $employe->nom }}"
-                                data-prenom="{{ $employe->prenom }}"
-                                data-phone="{{ $employe->phone }}"
-                                data-email="{{ $employe->email }}"
-                                data-ville="{{ $employe->ville }}"
-                                data-quartier="{{ $employe->quartier }}"
-                                data-role_id="{{ $employe->role_id }}"
-                                title="Modifier">
-                                <i class="fas fa-edit"></i>
-                            </button>
+                        @php
+                            $photoUrl = $employe->photo_url ?: 'https://placehold.co/600x600/F58220/ffffff?text=NP';
+                            $thumbUrl = $employe->photo_url ?: 'https://placehold.co/40x40/F58220/ffffff?text=NP';
+                            $fullName = trim(($employe->prenom ?? '').' '.($employe->nom ?? ''));
+                        @endphp
 
-                            {{-- Bouton Supprimer --}}
-                            <form action="{{ route('employes.destroy', $employe->id) }}" method="POST" class="inline"
-                                onsubmit="return confirm('Voulez-vous vraiment supprimer cet employé ?')">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit"
-                                    class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 p-2"
-                                    title="Supprimer">
-                                    <i class="fas fa-trash"></i>
+                        <tr class="hover:bg-hover-subtle transition-colors">
+                            <td>{{ $employe->role?->name ?? '-' }}</td>
+                            <td style="color: var(--color-text);">{{ $employe->nom }} {{ $employe->prenom }}</td>
+                            <td class="text-secondary">{{ $employe->phone }}</td>
+                            <td>{{ $employe->ville }}</td>
+                            <td>{{ $employe->quartier }}</td>
+                            <td>{{ $employe->email }}</td>
+
+                            <td>
+                                <img
+                                    src="{{ $thumbUrl }}"
+                                    alt="Photo"
+                                    class="h-10 w-10 object-cover rounded-full border border-border-subtle cursor-pointer hover:opacity-90 transition js-employe-photo"
+                                    data-full-url="{{ $photoUrl }}"
+                                    data-title="{{ $fullName }}"
+                                    title="Voir la photo"
+                                >
+                            </td>
+
+                            <td class="space-x-2 whitespace-nowrap">
+                                {{-- Modifier --}}
+                                <button
+                                    class="text-yellow-500 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-200 p-2 openEditModalBtn"
+                                    data-id="{{ $employe->id }}"
+                                    data-nom="{{ $employe->nom }}"
+                                    data-prenom="{{ $employe->prenom }}"
+                                    data-phone="{{ $employe->phone }}"
+                                    data-email="{{ $employe->email }}"
+                                    data-ville="{{ $employe->ville }}"
+                                    data-quartier="{{ $employe->quartier }}"
+                                    data-role_id="{{ $employe->role_id }}"
+                                    data-photo_url="{{ $employe->photo_url }}"
+                                    title="Modifier">
+                                    <i class="fas fa-edit"></i>
                                 </button>
-                            </form>
-                        </td>
-                    </tr>
+
+                                {{-- Supprimer --}}
+                                <form action="{{ route('employes.destroy', $employe->id) }}" method="POST" class="inline"
+                                    onsubmit="return confirm('Voulez-vous vraiment supprimer cet employé ?')">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit"
+                                        class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 p-2"
+                                        title="Supprimer">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
                     @endforeach
                 </tbody>
             </table>
@@ -141,7 +154,7 @@
                 </div>
             </div>
 
-            {{-- ✅ Rôle --}}
+            {{-- Rôle --}}
             <div>
                 <label class="block text-sm font-medium text-secondary">Rôle</label>
                 <select name="role_id" required class="ui-input-style mt-1">
@@ -235,7 +248,7 @@
                 </div>
             </div>
 
-            {{-- ✅ Rôle --}}
+            {{-- Rôle --}}
             <div>
                 <label class="block text-sm font-medium text-secondary">Rôle</label>
                 <select id="edit_role_id" name="role_id" required class="ui-input-style mt-1">
@@ -281,18 +294,35 @@
     </div>
 </div>
 
+{{-- ================= MODALE PHOTO VIEW ================= --}}
+<div id="imageModal" class="fixed inset-0 z-[99999] hidden items-center justify-center bg-black bg-opacity-75">
+    <div class="relative bg-white rounded-lg shadow-2xl max-w-4xl max-h-[90vh] overflow-hidden">
+        <button id="closeImageModalBtn"
+            class="absolute top-4 right-4 text-3xl font-bold text-white hover:text-primary transition-colors bg-gray-900 rounded-full h-10 w-10 flex items-center justify-center">
+            &times;
+        </button>
+
+        <div class="px-4 pt-4">
+            <div id="imageModalTitle" class="text-sm font-semibold text-secondary"></div>
+        </div>
+
+        <img id="modalImage" src="" alt="Photo"
+             class="w-full h-auto object-contain max-h-[85vh] p-4">
+    </div>
+</div>
+@endsection
 
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // --- DataTables ---
-    if ($.fn.DataTable) {
+
+    // DataTables
+    if (window.jQuery && $.fn.DataTable) {
         $('#employeTable').DataTable({
             language: { url: "//cdn.datatables.net/plug-ins/1.13.7/i18n/fr-FR.json" }
         });
     }
 
-    // --- Fonctions utilitaires pour les modales ---
     function openModal(modal) {
         modal.classList.remove('hidden');
         modal.classList.add('opacity-100');
@@ -314,7 +344,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // --- Modale d'Ajout ---
+    // ------------------ Add ------------------
     const addModal = document.getElementById('addEmployeModal');
     const openAddBtn = document.getElementById('openAddModalBtn');
     const closeAddBtn = document.getElementById('closeAddModalBtn');
@@ -323,27 +353,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileNameAddDisplay = document.getElementById('file-name-add');
     const previewAdd = document.getElementById('preview-add');
 
-    openAddBtn.addEventListener('click', () => {
+    if (openAddBtn) openAddBtn.addEventListener('click', () => {
         openModal(addModal);
         previewAdd.classList.add('hidden');
         fileNameAddDisplay.textContent = 'Aucun fichier sélectionné';
     });
 
-    closeAddBtn.addEventListener('click', () => closeModal(addModal, 'addEmployeForm'));
-    addModal.addEventListener('click', (e) => {
+    if (closeAddBtn) closeAddBtn.addEventListener('click', () => closeModal(addModal, 'addEmployeForm'));
+    if (addModal) addModal.addEventListener('click', (e) => {
         if (e.target === addModal) closeModal(addModal, 'addEmployeForm');
     });
 
-    // Photo preview Ajout
-    photoAddInput.addEventListener('change', function() {
-        const file = this.files[0];
+    if (photoAddInput) photoAddInput.addEventListener('change', function() {
+        const file = this.files && this.files[0];
         if (file) {
             fileNameAddDisplay.textContent = 'Fichier : ' + file.name;
             const reader = new FileReader();
-            reader.onload = e => {
-                previewAdd.src = e.target.result;
-                previewAdd.classList.remove('hidden');
-            }
+            reader.onload = e => { previewAdd.src = e.target.result; previewAdd.classList.remove('hidden'); };
             reader.readAsDataURL(file);
         } else {
             fileNameAddDisplay.textContent = 'Aucun fichier sélectionné';
@@ -351,7 +377,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // --- Modale de Modification ---
+    // ------------------ Edit ------------------
     const editModal = document.getElementById('editEmployeModal');
     const closeEditBtn = document.getElementById('closeEditModalBtn');
     const editForm = document.getElementById('editForm');
@@ -360,17 +386,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileNameEditDisplay = document.getElementById('file-name-edit');
     const previewEdit = document.getElementById('preview-edit');
 
-    closeEditBtn.addEventListener('click', () => closeModal(editModal));
-    editModal.addEventListener('click', (e) => {
+    const updateUrlTemplate = @json(route('employes.update', ['employe' => '__ID__']));
+
+    if (closeEditBtn) closeEditBtn.addEventListener('click', () => closeModal(editModal));
+    if (editModal) editModal.addEventListener('click', (e) => {
         if (e.target === editModal) closeModal(editModal);
     });
 
-    // Ouvrir modale modification
     document.querySelectorAll('.openEditModalBtn').forEach(btn => {
         btn.addEventListener('click', function() {
             const id = this.dataset.id;
 
-            // Champs texte
             document.getElementById('edit_id').value = id;
             document.getElementById('edit_nom').value = this.dataset.nom || '';
             document.getElementById('edit_prenom').value = this.dataset.prenom || '';
@@ -378,41 +404,78 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('edit_email').value = this.dataset.email || '';
             document.getElementById('edit_ville').value = this.dataset.ville || '';
             document.getElementById('edit_quartier').value = this.dataset.quartier || '';
-
-            // ✅ role
             document.getElementById('edit_role_id').value = this.dataset.role_id || '';
 
-            // Action form
-            editForm.action = `/employes/${id}`;
+            editForm.action = updateUrlTemplate.replace('__ID__', id);
 
-            // Reset password + photo
             document.getElementById('edit_password').value = '';
             document.getElementById('edit_password_confirmation').value = '';
-            fileNameEditDisplay.textContent = 'Laisser vide pour conserver la photo actuelle';
-            previewEdit.classList.add('hidden');
+
+            // ✅ afficher photo actuelle si existe
+            const p = this.dataset.photo_url;
+            if (p) {
+                previewEdit.src = p;
+                previewEdit.classList.remove('hidden');
+                fileNameEditDisplay.textContent = 'Photo actuelle affichée — choisissez un fichier pour remplacer';
+            } else {
+                previewEdit.src = '#';
+                previewEdit.classList.add('hidden');
+                fileNameEditDisplay.textContent = 'Laisser vide pour conserver la photo actuelle';
+            }
 
             openModal(editModal);
         });
     });
 
-    // Photo preview Modification
-    photoEditInput.addEventListener('change', function() {
-        const file = this.files[0];
+    if (photoEditInput) photoEditInput.addEventListener('change', function() {
+        const file = this.files && this.files[0];
         if (file) {
             fileNameEditDisplay.textContent = 'Fichier : ' + file.name;
             const reader = new FileReader();
-            reader.onload = e => {
-                previewEdit.src = e.target.result;
-                previewEdit.classList.remove('hidden');
-            }
+            reader.onload = e => { previewEdit.src = e.target.result; previewEdit.classList.remove('hidden'); };
             reader.readAsDataURL(file);
         } else {
             fileNameEditDisplay.textContent = 'Laisser vide pour conserver la photo actuelle';
-            previewEdit.classList.add('hidden');
         }
     });
+
+    // ------------------ Image Modal (view) ------------------
+    const imageModal = document.getElementById('imageModal');
+    const modalImage = document.getElementById('modalImage');
+    const imageModalTitle = document.getElementById('imageModalTitle');
+    const closeImageModalBtn = document.getElementById('closeImageModalBtn');
+
+    function openImageModal(url, title) {
+        if (!url) return;
+        modalImage.src = url;
+        imageModalTitle.textContent = title ? `Photo : ${title}` : 'Photo';
+        imageModal.classList.remove('hidden');
+        imageModal.classList.add('flex');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeImageModal() {
+        imageModal.classList.add('hidden');
+        imageModal.classList.remove('flex');
+        modalImage.src = '';
+        document.body.style.overflow = '';
+    }
+
+    if (closeImageModalBtn) closeImageModalBtn.addEventListener('click', closeImageModal);
+    if (imageModal) imageModal.addEventListener('click', (e) => {
+        if (e.target === imageModal) closeImageModal();
+    });
+
+    // ✅ event delegation (OK avec DataTables)
+    document.addEventListener('click', function(e) {
+        const img = e.target.closest('.js-employe-photo');
+        if (!img) return;
+
+        const url = img.getAttribute('data-full-url');
+        const title = img.getAttribute('data-title');
+        openImageModal(url, title);
+    });
+
 });
 </script>
 @endpush
-
-@endsection

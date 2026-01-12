@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
+use App\Services\Media\MediaService;
 
 class TrackingUserController extends Controller
 {
@@ -19,6 +20,13 @@ class TrackingUserController extends Controller
         'utilisateur_secondaire',
     ];
 
+    private MediaService $media;
+
+    public function __construct(MediaService $media)
+    {
+        $this->media = $media;
+    }
+
     /**
      * Affiche la liste des utilisateurs.
      */
@@ -26,7 +34,6 @@ class TrackingUserController extends Controller
     {
         $users = User::with('role')->orderBy('nom')->get();
 
-        // ✅ rôles autorisés pour la plateforme (filtre par SLUG)
         $roles = Role::whereIn('slug', self::ALLOWED_ROLE_SLUGS)
             ->orderBy('name')
             ->get(['id', 'name', 'slug', 'description']);
@@ -46,9 +53,8 @@ class TrackingUserController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'ville' => ['nullable', 'string', 'max:255'],
             'quartier' => ['nullable', 'string', 'max:255'],
-            'photo' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif', 'max:8048'],
+            'photo' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:8048'],
 
-            // ✅ rôle obligatoire et limité aux slugs autorisés
             'role_id' => [
                 'required',
                 'integer',
@@ -63,12 +69,15 @@ class TrackingUserController extends Controller
         $data['email'] = strtolower($data['email']);
         $data['password'] = Hash::make($request->password);
 
-        if ($request->hasFile('photo')) {
-            $data['photo'] = $request->file('photo')->store('photos', 'public');
-        }
-
+        // ID unique
         $anneemois = now()->format('Ym');
         $data['user_unique_id'] = 'PxT-' . $anneemois . '-' . Str::upper(Str::random(4));
+
+        // Photo via MediaService
+        if ($request->hasFile('photo')) {
+            $folder = 'users/' . $data['user_unique_id'];
+            $data['photo'] = $this->media->storeImage($request->file('photo'), $folder);
+        }
 
         User::create($data);
 
@@ -87,9 +96,8 @@ class TrackingUserController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $trackingUser->id],
             'ville' => ['nullable', 'string', 'max:255'],
             'quartier' => ['nullable', 'string', 'max:255'],
-            'photo' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif', 'max:8048'],
+            'photo' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:8048'],
 
-            // ✅ rôle obligatoire et limité
             'role_id' => [
                 'required',
                 'integer',
@@ -107,8 +115,14 @@ class TrackingUserController extends Controller
             $data['password'] = Hash::make($request->password);
         }
 
+        // Photo replace via MediaService
         if ($request->hasFile('photo')) {
-            $data['photo'] = $request->file('photo')->store('photos', 'public');
+            $folder = 'users/' . ($trackingUser->user_unique_id ?: 'unknown');
+            $data['photo'] = $this->media->replaceImage(
+                $trackingUser->photo,
+                $request->file('photo'),
+                $folder
+            );
         }
 
         $trackingUser->update($data);
@@ -121,7 +135,9 @@ class TrackingUserController extends Controller
      */
     public function destroy(User $trackingUser)
     {
+        $this->media->delete($trackingUser->photo);
         $trackingUser->delete();
+
         return redirect()->route('tracking.users')->with('success', 'Utilisateur supprimé avec succès.');
     }
 }

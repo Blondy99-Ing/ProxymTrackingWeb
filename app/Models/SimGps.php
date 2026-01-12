@@ -12,5 +12,6 @@ class SimGps extends Model
         'objectid',
         'mac_id',
         'sim_number',
+        'account_name',
     ];
 }

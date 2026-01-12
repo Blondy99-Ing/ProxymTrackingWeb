@@ -20,8 +20,6 @@
         </div>
     </div>
 
-   
-
     <div class="ui-card">
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-xl font-bold font-orbitron" style="color: var(--color-text);">Liste des Utilisateurs</h2>
@@ -44,8 +42,15 @@
                         <th>Actions</th>
                     </tr>
                 </thead>
+
                 <tbody>
                     @foreach($users ?? [] as $user)
+                        @php
+                            $thumbUrl = $user->photo_url ?: 'https://placehold.co/40x40/F58220/ffffff?text=NP';
+                            $fullUrl  = $user->photo_url ?: 'https://placehold.co/600x600/F58220/ffffff?text=NP';
+                            $fullName = trim(($user->prenom ?? '').' '.($user->nom ?? ''));
+                        @endphp
+
                         <tr class="hover:bg-hover-subtle transition-colors">
                             <td>{{ $user->role?->name ?? '-' }}</td>
                             <td style="color: var(--color-text);">{{ $user->nom }} {{ $user->prenom }}</td>
@@ -53,14 +58,26 @@
                             <td>{{ $user->ville }}</td>
                             <td>{{ $user->quartier }}</td>
                             <td>{{ $user->email }}</td>
+
                             <td>
                                 <img
-                                    src="{{ $user->photo ? asset('storage/' . $user->photo) : 'https://placehold.co/40x40/F58220/ffffff?text=NP' }}"
+                                    src="{{ $thumbUrl }}"
                                     alt="Photo"
-                                    class="h-10 w-10 object-cover rounded-full border border-border-subtle"
+                                    class="h-10 w-10 object-cover rounded-full border border-border-subtle cursor-pointer hover:opacity-90 transition js-user-photo"
+                                    data-full-url="{{ $fullUrl }}"
+                                    data-title="{{ $fullName }}"
+                                    title="Voir la photo"
                                 >
                             </td>
+
                             <td class="space-x-2 whitespace-nowrap">
+                                {{-- Voir --}}
+                                <a href="{{ route('users.profile', ['id' => $user->id]) }}"
+                                   class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 p-2"
+                                   title="Voir les détails">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+
                                 {{-- Modifier --}}
                                 <button
                                     class="text-yellow-500 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-200 p-2 btn-edit"
@@ -85,6 +102,7 @@
                         </tr>
                     @endforeach
                 </tbody>
+
             </table>
         </div>
     </div>
@@ -105,7 +123,6 @@
             Ajouter un Utilisateur
         </h2>
 
-        {{-- ✅ IMPORTANT : action par défaut = STORE --}}
         <form id="userForm"
               action="{{ route('tracking.users.store') }}"
               method="POST"
@@ -113,10 +130,7 @@
               class="space-y-4">
             @csrf
 
-            {{-- id en édition --}}
             <input type="hidden" id="userId" value="">
-
-            {{-- spoof method uniquement en édition (injected par JS) --}}
             <div id="methodSpoofContainer"></div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -152,7 +166,7 @@
                 </div>
             </div>
 
-            {{-- ✅ Role --}}
+            {{-- Role --}}
             <div>
                 <label class="block text-sm font-medium text-secondary">Rôle</label>
                 <select id="role_id" name="role_id" required class="ui-input-style mt-1">
@@ -174,6 +188,7 @@
                 </label>
                 <input type="file" class="hidden" id="photo" name="photo" accept="image/*">
                 <div id="file-name" class="text-xs text-secondary italic">Aucun fichier sélectionné</div>
+
                 <img id="preview" src="#" alt="Aperçu"
                      class="mt-2 h-24 w-24 object-cover rounded-full hidden border border-border-subtle">
             </div>
@@ -197,17 +212,35 @@
     </div>
 </div>
 
+{{-- ================= MODALE PHOTO (VIEW) ================= --}}
+<div id="imageModal" class="fixed inset-0 z-[99999] hidden items-center justify-center bg-black bg-opacity-75">
+    <div class="relative bg-white rounded-lg shadow-2xl max-w-4xl max-h-[90vh] overflow-hidden">
+        <button id="closeImageModalBtn"
+            class="absolute top-4 right-4 text-3xl font-bold text-white hover:text-primary transition-colors bg-gray-900 rounded-full h-10 w-10 flex items-center justify-center">
+            &times;
+        </button>
+
+        <div class="px-4 pt-4">
+            <div id="imageModalTitle" class="text-sm font-semibold text-secondary"></div>
+        </div>
+
+        <img id="modalImage" src="" alt="Image"
+             class="w-full h-auto object-contain max-h-[85vh] p-4">
+    </div>
+</div>
+
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
     // DataTables
-    if ($.fn.DataTable) {
+    if (window.jQuery && $.fn.DataTable) {
         $('#usersTable').DataTable({
             language: { url: "//cdn.datatables.net/plug-ins/1.13.7/i18n/fr-FR.json" }
         });
     }
 
+    // ============ MODALE AJOUT/EDIT ============
     const modal = document.getElementById('userModal');
     const openAddBtn = document.getElementById('openAddModalBtn');
     const closeBtn = document.getElementById('closeModalBtn');
@@ -242,28 +275,20 @@ document.addEventListener('DOMContentLoaded', function() {
             modal.classList.add('hidden');
             modal.classList.remove('opacity-100');
         }, 200);
-
         resetToAdd();
     }
 
     function resetToAdd() {
-        // reset form (revient aux valeurs HTML par défaut)
         userForm.reset();
-
-        // ✅ store action par défaut
         userForm.action = "{{ route('tracking.users.store') }}";
         userIdHidden.value = '';
-
-        // ✅ enlever spoof PUT si existant
         methodSpoofContainer.innerHTML = '';
 
-        // password obligatoire
         passwordInput.required = true;
         passwordConfirmInput.required = true;
         passwordInput.value = '';
         passwordConfirmInput.value = '';
 
-        // reset photo preview
         preview.src = '#';
         preview.classList.add('hidden');
         fileNameDisplay.textContent = 'Aucun fichier sélectionné';
@@ -272,36 +297,25 @@ document.addEventListener('DOMContentLoaded', function() {
         submitBtn.innerHTML = '<i class="fas fa-user-plus mr-2"></i> Ajouter';
     }
 
-    // fermeture clic backdrop
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) closeModal();
-    });
-    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (openAddBtn) openAddBtn.addEventListener('click', () => { resetToAdd(); openModal(); });
 
-    // Ajout
-    openAddBtn.addEventListener('click', () => {
-        resetToAdd();
-        openModal();
-    });
+    if (photoInput) {
+        photoInput.addEventListener('change', function() {
+            const file = this.files && this.files[0];
+            if (file) {
+                fileNameDisplay.textContent = 'Fichier : ' + file.name;
+                const reader = new FileReader();
+                reader.onload = e => { preview.src = e.target.result; preview.classList.remove('hidden'); };
+                reader.readAsDataURL(file);
+            } else {
+                fileNameDisplay.textContent = 'Aucun fichier sélectionné';
+                preview.classList.add('hidden');
+            }
+        });
+    }
 
-    // Photo preview
-    photoInput.addEventListener('change', function() {
-        const file = this.files[0];
-        if (file) {
-            fileNameDisplay.textContent = 'Fichier : ' + file.name;
-            const reader = new FileReader();
-            reader.onload = e => {
-                preview.src = e.target.result;
-                preview.classList.remove('hidden');
-            };
-            reader.readAsDataURL(file);
-        } else {
-            fileNameDisplay.textContent = 'Aucun fichier sélectionné';
-            preview.classList.add('hidden');
-        }
-    });
-
-    // Edition
     document.querySelectorAll('.btn-edit').forEach(button => {
         button.addEventListener('click', () => {
             const user = JSON.parse(button.getAttribute('data-user'));
@@ -309,14 +323,11 @@ document.addEventListener('DOMContentLoaded', function() {
             modalTitle.textContent = "Modifier l'Utilisateur";
             submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i> Mettre à jour';
 
-            // ✅ update action
             userForm.action = `{{ url('tracking/users') }}/${user.id}`;
             userIdHidden.value = user.id;
 
-            // ✅ ajouter spoof PUT
             methodSpoofContainer.innerHTML = `<input type="hidden" name="_method" value="PUT">`;
 
-            // remplir champs
             document.getElementById('nom').value = user.nom || '';
             document.getElementById('prenom').value = user.prenom || '';
             document.getElementById('phone').value = user.phone || '';
@@ -324,18 +335,15 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('ville').value = user.ville || '';
             document.getElementById('quartier').value = user.quartier || '';
 
-            // role
             roleSelect.value = user.role_id || '';
 
-            // password optionnel en edit
             passwordInput.required = false;
             passwordConfirmInput.required = false;
             passwordInput.value = '';
             passwordConfirmInput.value = '';
 
-            // photo
-            if (user.photo) {
-                preview.src = `/storage/${user.photo}`;
+            if (user.photo_url) {
+                preview.src = user.photo_url;
                 preview.classList.remove('hidden');
                 fileNameDisplay.textContent = 'Laisser vide pour conserver la photo actuelle';
             } else {
@@ -346,6 +354,46 @@ document.addEventListener('DOMContentLoaded', function() {
 
             openModal();
         });
+    });
+
+    // ============ MODALE IMAGE (PHOTO USER) ============
+    const imageModal = document.getElementById('imageModal');
+    const modalImage = document.getElementById('modalImage');
+    const imageModalTitle = document.getElementById('imageModalTitle');
+    const closeImageModalBtn = document.getElementById('closeImageModalBtn');
+
+    function openImageModal(url, title) {
+        if (!url) return;
+        modalImage.src = url;
+        imageModalTitle.textContent = title ? `Photo : ${title}` : 'Photo';
+        imageModal.classList.remove('hidden');
+        imageModal.classList.add('flex');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeImageModal() {
+        imageModal.classList.add('hidden');
+        imageModal.classList.remove('flex');
+        modalImage.src = '';
+        document.body.style.overflow = '';
+    }
+
+    if (closeImageModalBtn) closeImageModalBtn.addEventListener('click', closeImageModal);
+
+    if (imageModal) {
+        imageModal.addEventListener('click', (e) => {
+            if (e.target === imageModal) closeImageModal();
+        });
+    }
+
+    // ✅ EVENT DELEGATION (marche même si DataTables redraw)
+    document.addEventListener('click', function(e) {
+        const img = e.target.closest('.js-user-photo');
+        if (!img) return;
+
+        const url = img.getAttribute('data-full-url');
+        const title = img.getAttribute('data-title');
+        openImageModal(url, title);
     });
 
 });

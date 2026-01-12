@@ -24,23 +24,22 @@ class GpsSimController extends Controller
                 $query->where(function ($sub) use ($q) {
                     $sub->where('mac_id', 'like', "%{$q}%")
                         ->orWhere('objectid', 'like', "%{$q}%")
-                        ->orWhere('sim_number', 'like', "%{$q}%");
+                        ->orWhere('sim_number', 'like', "%{$q}%")
+                        ->orWhere('account_name', 'like', "%{$q}%");
                 });
             })
             ->orderByDesc('id')
             ->paginate(50)
             ->appends(['q' => $q]);
 
-        // 🧠 Pour chaque GPS, on calcule engine_state + gps_online depuis la table locations via le service
+        // 🧠 Pour chaque GPS, on calcule engine_state + gps_online depuis la table locations
         $items->getCollection()->transform(function (SimGps $item) use ($gps) {
 
-            // valeurs par défaut (-> N/A si rien trouvé)
             $engineState = null;
             $engineCut   = null;
             $gpsOnline   = null;
             $gpsLastSeen = null;
 
-            // Si pas de MAC ID => impossible de chercher
             if (!empty($item->mac_id)) {
                 try {
                     $status = $gps->getEngineStatusFromLastLocation($item->mac_id);
@@ -50,7 +49,6 @@ class GpsSimController extends Controller
                         $engineState = $decoded['engineState'] ?? 'UNKNOWN';
                         $engineCut   = ($engineState === 'CUT');
 
-                        // Dernier "seen" (heart_time > sys_time > datetime)
                         $last = $status['location']['heart_time']
                             ?? $status['location']['sys_time']
                             ?? $status['datetime']
@@ -61,7 +59,6 @@ class GpsSimController extends Controller
 
                             try {
                                 $dt        = Carbon::parse($last);
-                                // même logique que dans ControlGpsController::isGpsOnline()
                                 $gpsOnline = $dt->diffInMinutes(now()) <= 10;
                             } catch (\Throwable $e) {
                                 $gpsOnline = null;
@@ -69,7 +66,6 @@ class GpsSimController extends Controller
                         }
                     }
                 } catch (\Throwable $e) {
-                    // On log juste en debug, on ne casse pas la page
                     Log::warning('[GPS_SIM] Erreur getEngineStatusFromLastLocation', [
                         'mac_id' => $item->mac_id,
                         'error'  => $e->getMessage(),
@@ -77,7 +73,6 @@ class GpsSimController extends Controller
                 }
             }
 
-            // On ajoute des "attributs dynamiques" utilisés dans la vue
             $item->engine_state  = $engineState;   // CUT / ON / OFF / UNKNOWN / null
             $item->engine_cut    = $engineCut;     // bool|null
             $item->gps_online    = $gpsOnline;     // bool|null
@@ -90,13 +85,12 @@ class GpsSimController extends Controller
     }
 
     /**
-     * ✅ Mettre à jour (ajouter/modifier) la SIM d’un GPS (via modale)
+     * ✅ Mettre à jour la SIM d’un GPS
      */
     public function updateSim(Request $request, SimGps $simGps): RedirectResponse
     {
         $validated = $request->validate([
             'sim_number' => ['nullable', 'string', 'max:30'],
-            // Si tu veux strict digits: 'regex:/^[0-9+\s-]{6,30}$/'
         ]);
 
         $sim = trim((string) ($validated['sim_number'] ?? ''));
@@ -107,103 +101,126 @@ class GpsSimController extends Controller
     }
 
     /**
-     * ✅ Sync depuis le compte 18GPS
-     * - insère UNIQUEMENT les nouveaux mac_id
-     * - ne modifie PAS les existants
+     * ✅ Sync MULTI-COMPTES (tracking puis mobility)
+     * - récupère les GPS du compte
+     * - insère uniquement les nouveaux
+     * - remplit account_name à l'ajout
+     * - backfill account_name uniquement si NULL
      */
     public function syncFromAccount(Request $request, GpsControlService $gps): RedirectResponse
     {
-        try {
-            $raw     = $gps->getAccountDeviceListRaw();
-            $devices = $this->extractDevicesUltraRobust($raw);
+        $accounts = ['tracking', 'mobility'];
 
-            Log::info('[GPS_SIM] Sync RAW', [
-                'raw_top_keys'  => is_array($raw) ? array_keys($raw) : null,
-                'devices_count' => count($devices),
-            ]);
+        $summary = [];
+        $anyOk = false;
 
-            if (count($devices) === 0) {
-                $rawLower = is_array($raw) ? array_change_key_case($raw, CASE_LOWER) : [];
-                $code     = $rawLower['errorcode'] ?? $rawLower['code'] ?? null;
-                $desc     = $rawLower['errordescribe'] ?? $rawLower['msg'] ?? $rawLower['message'] ?? null;
+        foreach ($accounts as $account) {
+            try {
+                // 1) switch identifiants du service + token isolé
+                $gps->setAccount($account);
 
-                $msg = "Aucun GPS récupéré depuis le provider";
-                if ($code !== null) $msg .= " (code={$code})";
-                if (!empty($desc)) $msg .= " - {$desc}";
-                if (isset($rawLower['data']) && is_array($rawLower['data'])) $msg .= " | data_count=" . count($rawLower['data']);
-                if (isset($rawLower['rows']) && is_array($rawLower['rows'])) $msg .= " | rows_count=" . count($rawLower['rows']);
+                $raw     = $gps->getAccountDeviceListRaw();
+                $devices = $this->extractDevicesUltraRobust($raw);
 
-                return back()->with('error', $msg . '.');
+                Log::info('[GPS_SIM] Sync RAW', [
+                    'account'       => $account,
+                    'raw_top_keys'   => is_array($raw) ? array_keys($raw) : null,
+                    'devices_count'  => count($devices),
+                ]);
+
+                if (count($devices) === 0) {
+                    $rawLower = is_array($raw) ? array_change_key_case($raw, CASE_LOWER) : [];
+                    $code     = $rawLower['errorcode'] ?? $rawLower['code'] ?? null;
+                    $desc     = $rawLower['errordescribe'] ?? $rawLower['msg'] ?? $rawLower['message'] ?? null;
+
+                    $msg = "{$account}: aucun GPS récupéré";
+                    if ($code !== null) $msg .= " (code={$code})";
+                    if (!empty($desc)) $msg .= " - {$desc}";
+
+                    $summary[] = "❌ {$msg}";
+                    continue;
+                }
+
+                $now = now();
+
+                // build rows dédoublonné
+                $rowsByMac = [];
+                foreach ($devices as $d) {
+                    if (!is_array($d)) continue;
+                    $dLower = array_change_key_case($d, CASE_LOWER);
+
+                    $mac = trim((string)($dLower['macid'] ?? $dLower['mac_id'] ?? ''));
+                    if ($mac === '') continue;
+
+                    $rowsByMac[$mac] = [
+                        'mac_id'       => $mac,
+                        'objectid'     => $dLower['objectid'] ?? null,
+                        'sim_number'   => null,
+                        'account_name' => $account, // ✅ IMPORTANT
+                        'created_at'   => $now,
+                        'updated_at'   => $now,
+                    ];
+                }
+
+                if (count($rowsByMac) === 0) {
+                    $summary[] = "❌ {$account}: liste provider OK mais aucun macid valide.";
+                    continue;
+                }
+
+                $macIds = array_keys($rowsByMac);
+
+                // 2) backfill account_name uniquement si NULL (ne modifie pas les existants déjà renseignés)
+                $filled = SimGps::query()
+                    ->whereIn('mac_id', $macIds)
+                    ->whereNull('account_name')
+                    ->update(['account_name' => $account]);
+
+                // 3) déjà existants
+                $existing = SimGps::query()
+                    ->whereIn('mac_id', $macIds)
+                    ->pluck('mac_id')
+                    ->all();
+
+                $existingSet = array_flip($existing);
+
+                // 4) nouveaux uniquement
+                $newRows = [];
+                foreach ($rowsByMac as $mac => $row) {
+                    if (!isset($existingSet[$mac])) $newRows[] = $row;
+                }
+
+                foreach (array_chunk($newRows, 500) as $chunk) {
+                    SimGps::query()->insert($chunk);
+                }
+
+                $anyOk = true;
+
+                $summary[] = "✅ {$account}: reçus=" . count($macIds)
+                    . " | nouveaux=" . count($newRows)
+                    . " | backfill_account=" . (int)$filled;
+
+            } catch (\Throwable $e) {
+                Log::error('[GPS_SIM] Erreur sync', [
+                    'account' => $account,
+                    'error'   => $e->getMessage(),
+                    'trace'   => $e->getTraceAsString(),
+                ]);
+
+                $summary[] = "❌ {$account}: erreur - " . $e->getMessage();
+                // on continue sur l'autre compte
             }
-
-            $now = now();
-
-            // build rows dédoublonné
-            $rowsByMac = [];
-            foreach ($devices as $d) {
-                if (!is_array($d)) continue;
-                $dLower = array_change_key_case($d, CASE_LOWER);
-
-                $mac = trim((string)($dLower['macid'] ?? $dLower['mac_id'] ?? ''));
-                if ($mac === '') continue;
-
-                $rowsByMac[$mac] = [
-                    'mac_id'     => $mac,
-                    'objectid'   => $dLower['objectid'] ?? null,
-                    'sim_number' => null,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
-
-            if (count($rowsByMac) === 0) {
-                return back()->with('error', "Liste provider OK mais aucun macid valide trouvé.");
-            }
-
-            $macIds = array_keys($rowsByMac);
-
-            // déjà existants
-            $existing = SimGps::query()
-                ->whereIn('mac_id', $macIds)
-                ->pluck('mac_id')
-                ->all();
-
-            $existingSet = array_flip($existing);
-
-            // nouveaux uniquement
-            $newRows = [];
-            foreach ($rowsByMac as $mac => $row) {
-                if (!isset($existingSet[$mac])) $newRows[] = $row;
-            }
-
-            $newCount = count($newRows);
-
-            if ($newCount === 0) {
-                return back()->with(
-                    'success',
-                    "Sync terminé ✅ Aucun nouveau GPS à ajouter. Total reçus: " . count($macIds)
-                );
-            }
-
-            foreach (array_chunk($newRows, 500) as $chunk) {
-                SimGps::query()->insert($chunk);
-            }
-
-            return back()->with(
-                'success',
-                "Sync terminé ✅ Nouveaux GPS ajoutés: {$newCount}. Total reçus: " . count($macIds)
-            );
-
-        } catch (\Throwable $e) {
-            Log::error('[GPS_SIM] Erreur sync', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return back()->with('error', "Erreur Sync: " . $e->getMessage());
         }
+
+        if (!$anyOk) {
+            return back()->with('error', "Sync échoué. " . implode(" | ", $summary));
+        }
+
+        return back()->with('success', "Sync terminé ✅ | " . implode(" | ", $summary));
     }
 
+    /**
+     * Ultra-robust extractor (inchangé)
+     */
     private function extractDevicesUltraRobust($raw): array
     {
         if (!is_array($raw)) return [];

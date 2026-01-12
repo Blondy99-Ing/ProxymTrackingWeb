@@ -13,17 +13,25 @@ use Illuminate\Support\Facades\Log;
 use App\Services\GpsControlService;
 use Illuminate\Validation\Rule;
 use App\Models\SimGps;
+use App\Services\Media\MediaService;
+
 
 
 
 class VoitureController extends Controller
 {
-    private GpsControlService $gps;
+     private GpsControlService $gps;
+    private MediaService $media;
 
-    public function __construct(GpsControlService $gps)
+    public function __construct(GpsControlService $gps, MediaService $media)
     {
         $this->gps = $gps;
+        $this->media = $media;
     }
+
+
+
+    
 
     /**
      * PAGE INDEX – Liste + Form
@@ -47,115 +55,122 @@ class VoitureController extends Controller
      * STORE
      */
     public function store(Request $request)
-{
-    $validatedData = $request->validate([
-        'immatriculation'    => 'required|string|max:255',
-        'vin'                => 'nullable|string|max:255', // ✅ AJOUT
-        'model'              => 'required|string|max:255',
-        'couleur'            => 'required|string|max:255',
-        'marque'             => 'required|string|max:255',
-        'mac_id_gps'         => 'required|string|max:255|unique:voitures,mac_id_gps',
-        'photo'              => 'nullable|image|mimes:jpeg,png,jpg,gif|max:8048',
-        'geofence_polygon'   => 'nullable|string',
-        'geofence_city_code' => 'nullable|string',
-        'geofence_city_name' => 'nullable|string',
-        'geofence_is_custom' => 'nullable|boolean',
-    ]);
+    {
+        $validatedData = $request->validate([
+            'immatriculation'    => 'required|string|max:255',
+            'vin'                => 'nullable|string|max:255',
+            'model'              => 'required|string|max:255',
+            'couleur'            => 'required|string|max:255',
+            'marque'             => 'required|string|max:255',
+            'mac_id_gps'         => 'required|string|max:255|unique:voitures,mac_id_gps',
+            'photo'              => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:8048',
 
-    if ($request->hasFile('photo')) {
-        $validatedData['photo'] = $request->file('photo')->store('photos');
+            'geofence_polygon'   => 'nullable|string',
+            'geofence_city_code' => 'nullable|string',
+            'geofence_city_name' => 'nullable|string',
+            'geofence_is_custom' => 'nullable|boolean',
+        ]);
+
+        // ✅ Générer l’ID unique AVANT stockage (utile pour ranger les photos)
+        $validatedData['voiture_unique_id'] = 'VH-' . now()->format('Ym') . '-' . Str::upper(Str::random(6));
+
+        // ✅ Photo (via service) -> stockage stable local/prod
+        if ($request->hasFile('photo')) {
+            $folder = 'vehicles/' . $validatedData['voiture_unique_id'];
+            $validatedData['photo'] = $this->media->storeImage($request->file('photo'), $folder);
+        }
+
+        // Geofence
+        $polygonArray = $this->extractPolygon($request->input('geofence_polygon'));
+        $validatedData['geofence_zone'] = $polygonArray ? json_encode($polygonArray) : null;
+
+        $validatedData['geofence_city_code'] = $request->input('geofence_city_code');
+        $validatedData['geofence_city_name'] = $request->input('geofence_city_name');
+        $validatedData['geofence_is_custom'] = (int) $request->input('geofence_is_custom', 0);
+
+        Voiture::create($validatedData);
+
+        return redirect()->route('tracking.vehicles')->with('success', 'Véhicule ajouté avec succès.');
     }
-
-    $validatedData['voiture_unique_id'] = 'VH-' . now()->format('Ym') . '-' . Str::random(6);
-
-    $polygonArray = $this->extractPolygon($request->input('geofence_polygon'));
-    $validatedData['geofence_zone'] = $polygonArray ? json_encode($polygonArray) : null;
-
-    $validatedData['geofence_city_code'] = $request->input('geofence_city_code');
-    $validatedData['geofence_city_name'] = $request->input('geofence_city_name');
-    $validatedData['geofence_is_custom'] = $request->input('geofence_is_custom', 0);
-
-    Voiture::create($validatedData);
-
-    return redirect()->route('tracking.vehicles')->with('success', 'Véhicule ajouté avec succès.');
-}
-
 
 
     /**
      * UPDATE
      */
-    public function update(Request $request, Voiture $voiture)
-{
-    $validatedData = $request->validate([
-        'immatriculation'    => 'required|string|max:255',
-        'vin'                => 'nullable|string|max:255',
-        'model'              => 'required|string|max:255',
-        'couleur'            => 'required|string|max:255',
-        'marque'             => 'required|string|max:255',
-        'mac_id_gps'         => 'required|string|max:255|unique:voitures,mac_id_gps,' . $voiture->id,
-        'photo'              => 'nullable|image|mimes:jpeg,png,jpg,gif|max:8048',
+     public function update(Request $request, Voiture $voiture)
+    {
+        $validatedData = $request->validate([
+            'immatriculation'    => 'required|string|max:255',
+            'vin'                => 'nullable|string|max:255',
+            'model'              => 'required|string|max:255',
+            'couleur'            => 'required|string|max:255',
+            'marque'             => 'required|string|max:255',
+            'mac_id_gps'         => 'required|string|max:255|unique:voitures,mac_id_gps,' . $voiture->id,
+            'photo'              => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:8048',
 
-        'geofence_is_custom' => 'nullable|boolean',
-        'geofence_polygon'   => ['nullable','string', Rule::requiredIf(fn() => (int)$request->input('geofence_is_custom') === 1)],
-        'geofence_city_code' => 'nullable|string',
-        'geofence_city_name' => 'nullable|string',
-    ]);
+            'geofence_is_custom' => 'nullable|boolean',
+            'geofence_polygon'   => ['nullable', 'string', Rule::requiredIf(fn() => (int) $request->input('geofence_is_custom') === 1)],
+            'geofence_city_code' => 'nullable|string',
+            'geofence_city_name' => 'nullable|string',
+        ]);
 
-    if ($request->hasFile('photo')) {
-        if ($voiture->photo) Storage::delete($voiture->photo);
-        $validatedData['photo'] = $request->file('photo')->store('photos');
+        // ✅ Photo (replace) via service
+        if ($request->hasFile('photo')) {
+            $folder = 'vehicles/' . ($voiture->voiture_unique_id ?: 'unknown');
+            $validatedData['photo'] = $this->media->replaceImage(
+                $voiture->photo,
+                $request->file('photo'),
+                $folder
+            );
+        }
+
+        $isCustom = (int) $request->input('geofence_is_custom', 0);
+        $polygonArray = $this->extractPolygon($request->input('geofence_polygon'));
+
+        if ($isCustom === 1 && !$polygonArray) {
+            return back()
+                ->with('error', 'Geofence personnalisé invalide : dessinez puis terminez le polygone.')
+                ->withInput();
+        }
+
+        if ($polygonArray) {
+            $validatedData['geofence_zone'] = json_encode($polygonArray);
+        }
+
+        $validatedData['geofence_is_custom'] = $isCustom;
+
+        if ($isCustom === 1) {
+            $validatedData['geofence_city_code'] = null;
+            $validatedData['geofence_city_name'] = null;
+        } else {
+            $validatedData['geofence_city_code'] = $request->input('geofence_city_code');
+            $validatedData['geofence_city_name'] = $request->input('geofence_city_name');
+        }
+
+        unset($validatedData['geofence_polygon']);
+
+        $voiture->update($validatedData);
+
+        return redirect()->route('tracking.vehicles')->with('success', 'Véhicule mis à jour avec succès.');
     }
-
-    $isCustom = (int) $request->input('geofence_is_custom', 0);
-    $polygonArray = $this->extractPolygon($request->input('geofence_polygon'));
-
-    if ($isCustom === 1 && !$polygonArray) {
-        return back()->with('error', 'Geofence personnalisé invalide : dessinez puis terminez le polygone.')->withInput();
-    }
-
-    if ($polygonArray) {
-        $validatedData['geofence_zone'] = json_encode($polygonArray);
-    }
-
-    $validatedData['geofence_is_custom'] = $isCustom;
-
-    if ($isCustom === 1) {
-        $validatedData['geofence_city_code'] = null;
-        $validatedData['geofence_city_name'] = null;
-    } else {
-        $validatedData['geofence_city_code'] = $request->input('geofence_city_code');
-        $validatedData['geofence_city_name'] = $request->input('geofence_city_name');
-    }
-
-    unset($validatedData['geofence_polygon']);
-
-    $voiture->update($validatedData);
-
-    return redirect()->route('tracking.vehicles')->with('success', 'Véhicule mis à jour avec succès.');
-}
-
 
     /**
      * DELETE ASSOCIATIONS USER<->VOITURE (pas le véhicule lui-même)
      */
-   public function destroy($id)
-{
-    $voiture = Voiture::with('utilisateur')->findOrFail($id);
+    public function destroy($id)
+    {
+        $voiture = Voiture::with('utilisateur')->findOrFail($id);
 
-    // detach relations pivot si besoin
-    $voiture->utilisateur()->detach();
+        // detach relations pivot
+        $voiture->utilisateur()->detach();
 
-    // supprimer photo
-    if ($voiture->photo) {
-        Storage::delete($voiture->photo);
+        // ✅ supprimer photo via service (bon disk)
+        $this->media->delete($voiture->photo);
+
+        $voiture->delete();
+
+        return redirect()->back()->with('success', 'Véhicule supprimé avec succès.');
     }
-
-    // ✅ supprimer le véhicule
-    $voiture->delete();
-
-    return redirect()->back()->with('success', 'Véhicule supprimé avec succès.');
-}
 
 
     /* ============================================================

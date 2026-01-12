@@ -249,10 +249,10 @@
                         <td><div class="w-8 h-8 rounded" style="background-color: {{ $voiture->couleur }}"></div></td>
                         <td>{{ $voiture->mac_id_gps }}</td>
                         <td>
-                            @if($voiture->photo)
-                                <img src="{{ asset('storage/' . $voiture->photo) }}" alt="Photo"
-                                     class="h-10 w-10 object-cover rounded">
-                            @endif
+                           @if($voiture->photo_url)
+  <img src="{{ $voiture->photo_url }}" class="h-10 w-10 object-cover rounded" alt="Photo">
+@endif
+
                         </td>
                         <td class="space-x-1 whitespace-nowrap">
                             <a href="{{ route('tracking.vehicles', ['edit' => $voiture->id]) }}"

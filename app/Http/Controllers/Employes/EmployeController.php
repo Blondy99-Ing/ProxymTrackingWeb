@@ -10,9 +10,17 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\Rule;
+use App\Services\Media\MediaService;
 
 class EmployeController extends Controller
 {
+    private MediaService $media;
+
+    public function __construct(MediaService $media)
+    {
+        $this->media = $media;
+    }
+
     /**
      * Liste employés + rôles autorisés (admin, call_center)
      */
@@ -20,7 +28,6 @@ class EmployeController extends Controller
     {
         $employes = Employe::with('role')->orderBy('nom')->get();
 
-        // ✅ seulement admin et call_center (filtre par SLUG, pas par NAME)
         $roles = Role::whereIn('slug', ['admin', 'call_center'])
             ->orderBy('name')
             ->get(['id', 'name', 'slug', 'description']);
@@ -34,16 +41,17 @@ class EmployeController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'nom' => ['required', 'string', 'max:255'],
-            'prenom' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:employes,email'],
+            'nom'      => ['required', 'string', 'max:255'],
+            'prenom'   => ['required', 'string', 'max:255'],
+            'email'    => ['required', 'string', 'email', 'max:255', 'unique:employes,email'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
-            'phone' => ['nullable', 'string', 'max:20'],
-            'ville' => ['nullable', 'string', 'max:255'],
+            'phone'    => ['nullable', 'string', 'max:20'],
+            'ville'    => ['nullable', 'string', 'max:255'],
             'quartier' => ['nullable', 'string', 'max:255'],
-            'photo' => ['nullable', 'file', 'image', 'max:2048'],
 
-            // ✅ rôle obligatoire + autorisé seulement admin/call_center (par slug)
+            // ✅ même logique images que users/vehicules
+            'photo'    => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:8048'],
+
             'role_id' => [
                 'required',
                 'integer',
@@ -51,23 +59,20 @@ class EmployeController extends Controller
             ],
         ]);
 
-        $path = null;
+        $data = $request->only(['nom', 'prenom', 'email', 'phone', 'ville', 'quartier', 'role_id']);
+        $data['email'] = strtolower($data['email']);
+        $data['password'] = Hash::make($request->password);
+
+        // ✅ ID stable AVANT photo (pour dossier)
+        $data['unique_id'] = (string) Str::uuid();
+
+        // ✅ Photo via MediaService
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('employes', 'public');
+            $folder = 'employes/' . $data['unique_id'];
+            $data['photo'] = $this->media->storeImage($request->file('photo'), $folder);
         }
 
-        Employe::create([
-            'unique_id' => (string) Str::uuid(),
-            'nom' => $request->nom,
-            'prenom' => $request->prenom,
-            'email' => strtolower($request->email),
-            'password' => Hash::make($request->password),
-            'phone' => $request->phone,
-            'ville' => $request->ville,
-            'quartier' => $request->quartier,
-            'photo' => $path,
-            'role_id' => (int) $request->role_id,
-        ]);
+        Employe::create($data);
 
         return redirect()->back()->with('success', 'Employé enregistré avec succès !');
     }
@@ -78,16 +83,16 @@ class EmployeController extends Controller
     public function update(Request $request, Employe $employe)
     {
         $request->validate([
-            'nom' => ['required', 'string', 'max:255'],
-            'prenom' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:employes,email,' . $employe->id],
+            'nom'      => ['required', 'string', 'max:255'],
+            'prenom'   => ['required', 'string', 'max:255'],
+            'email'    => ['required', 'string', 'email', 'max:255', 'unique:employes,email,' . $employe->id],
             'password' => ['nullable', 'confirmed', Rules\Password::defaults()],
-            'phone' => ['nullable', 'string', 'max:20'],
-            'ville' => ['nullable', 'string', 'max:255'],
+            'phone'    => ['nullable', 'string', 'max:20'],
+            'ville'    => ['nullable', 'string', 'max:255'],
             'quartier' => ['nullable', 'string', 'max:255'],
-            'photo' => ['nullable', 'file', 'image', 'max:2048'],
 
-            // ✅ changement de rôle autorisé seulement admin/call_center (par slug)
+            'photo'    => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:8048'],
+
             'role_id' => [
                 'required',
                 'integer',
@@ -95,23 +100,24 @@ class EmployeController extends Controller
             ],
         ]);
 
-        if ($request->hasFile('photo')) {
-            $employe->photo = $request->file('photo')->store('employes', 'public');
-        }
-
-        $employe->nom = $request->nom;
-        $employe->prenom = $request->prenom;
-        $employe->email = strtolower($request->email);
-        $employe->phone = $request->phone;
-        $employe->ville = $request->ville;
-        $employe->quartier = $request->quartier;
-        $employe->role_id = (int) $request->role_id;
+        $data = $request->only(['nom', 'prenom', 'email', 'phone', 'ville', 'quartier', 'role_id']);
+        $data['email'] = strtolower($data['email']);
 
         if ($request->filled('password')) {
-            $employe->password = Hash::make($request->password);
+            $data['password'] = Hash::make($request->password);
         }
 
-        $employe->save();
+        // ✅ Photo: remplace + supprime l’ancienne (sur le bon disk)
+        if ($request->hasFile('photo')) {
+            $folder = 'employes/' . ($employe->unique_id ?: 'unknown');
+            $data['photo'] = $this->media->replaceImage(
+                $employe->photo,
+                $request->file('photo'),
+                $folder
+            );
+        }
+
+        $employe->update($data);
 
         return redirect()->back()->with('success', 'Employé mis à jour avec succès !');
     }
@@ -121,7 +127,11 @@ class EmployeController extends Controller
      */
     public function destroy(Employe $employe)
     {
+        // ✅ supprimer la photo avant delete
+        $this->media->delete($employe->photo);
+
         $employe->delete();
+
         return redirect()->route('employes.index')->with('success', 'Employé supprimé avec succès !');
     }
 }

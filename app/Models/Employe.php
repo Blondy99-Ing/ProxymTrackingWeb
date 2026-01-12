@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 
 
 class Employe extends Authenticatable
@@ -40,6 +41,19 @@ class Employe extends Authenticatable
         'password',
         'remember_token',
     ];
+
+
+
+
+//gestion des image des employes
+protected $appends = ['photo_url'];
+
+public function getPhotoUrlAttribute(): ?string
+{
+    if (!$this->photo) return null;
+    return Storage::disk('public')->url($this->photo); // => /storage/....
+}
+
 
     /**
      * Get the attributes that should be cast.
