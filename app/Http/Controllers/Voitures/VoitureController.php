@@ -22,6 +22,7 @@ class VoitureController extends Controller
 {
      private GpsControlService $gps;
     private MediaService $media;
+    
 
     public function __construct(GpsControlService $gps, MediaService $media)
     {
@@ -181,61 +182,108 @@ class VoitureController extends Controller
      * Retourner l'état moteur en temps réel
      */
     public function getEngineStatus($id)
-    {
-        $voiture = Voiture::findOrFail($id);
+{
+    $voiture = Voiture::findOrFail($id);
+    $macId = trim((string) $voiture->mac_id_gps);
 
-        $gps = $this->gps->getEngineStatus($voiture->mac_id_gps);
-
-        if (!$gps['success']) {
-            return response()->json([
-                'success' => false,
-                'engine_on' => false,
-                'message' => $gps['message'] ?? "Erreur API"
-            ], 500);
-        }
-
+    if ($macId === '') {
         return response()->json([
-            'success' => true,
-            'engine_on' => $gps['engine_on'],
-            'online' => $gps['online'],
-            'raw' => $gps
-        ]);
+            'success' => false,
+            'engine_on' => false,
+            'message' => 'mac_id_gps vide'
+        ], 422);
     }
+
+    // ✅ Appel service (provider 18GPS) via macid
+    $gps = $this->gps->getEngineStatusFromLastLocation($macId);
+
+    if (!($gps['success'] ?? false)) {
+        return response()->json([
+            'success' => false,
+            'engine_on' => false,
+            'message' => $gps['message'] ?? "Erreur API"
+        ], 500);
+    }
+
+    // engineState: CUT / ON / OFF / UNKNOWN
+    $engineState = $gps['decoded']['engineState'] ?? 'UNKNOWN';
+
+    // "engine_on" = vrai si moteur ON (tu peux aussi décider: true si pas CUT)
+    $engineOn = ($engineState === 'ON');
+
+    // online: même logique que ton GpsSimController (<= 10 min)
+    $last = $gps['location']['heart_time']
+        ?? $gps['location']['sys_time']
+        ?? $gps['datetime']
+        ?? null;
+
+    $online = null;
+    if ($last) {
+        try {
+            $online = \Carbon\Carbon::parse($last)->diffInMinutes(now()) <= 10;
+        } catch (\Throwable $e) {
+            $online = null;
+        }
+    }
+
+    return response()->json([
+        'success' => true,
+        'engine_on' => $engineOn,
+        'engine_state' => $engineState,
+        'online' => $online,
+        'raw' => $gps,
+    ]);
+}
 
     /* ============================================================
        ███   TOGGLE MOTEUR  (OILCUT / OILON)
        ============================================================ */
 
     public function toggleEngine($id)
-    {
-        $voiture = Voiture::findOrFail($id);
+{
+    $voiture = Voiture::findOrFail($id);
+    $macId = trim((string) $voiture->mac_id_gps);
 
-        // 1️⃣ Lire statut réel
-        $gps = $this->gps->getEngineStatus($voiture->mac_id_gps);
-
-        if (!$gps['success']) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Impossible d’obtenir statut moteur'
-            ]);
-        }
-
-        $isOn = $gps['engine_on'];
-
-        // 2️⃣ Déterminer commande
-        $command = $isOn ? "OILCUT" : "OILON";
-
-        // 3️⃣ Envoyer commande
-        $response = $this->gps->sendGpsCommand($voiture->mac_id_gps, $command);
-
+    if ($macId === '') {
         return response()->json([
-            'success' => true,
-            'command_sent' => $command,
-            'previous_state' => $isOn,
-            'new_state' => !$isOn,
-            'gps_response' => $response
-        ]);
+            'success' => false,
+            'message' => 'mac_id_gps vide'
+        ], 422);
     }
+
+    // 1️⃣ Lire statut réel (provider 18GPS via ton service)
+    $gps = $this->gps->getEngineStatusFromLastLocation($macId);
+
+    if (!($gps['success'] ?? false)) {
+        return response()->json([
+            'success' => false,
+            'message' => $gps['message'] ?? 'Impossible d’obtenir statut moteur'
+        ], 500);
+    }
+
+    $engineState = $gps['decoded']['engineState'] ?? 'UNKNOWN';
+
+    // Ici on considère ON = moteur allumé (ACC=1 + relay ok)
+    $isOn = ($engineState === 'ON');
+
+    // 2️⃣ Envoyer commande via wrappers du service
+    // - si moteur ON => on coupe (close relay)
+    // - sinon => on restaure (open relay)
+    $response = $isOn
+        ? $this->gps->cutEngine($macId)
+        : $this->gps->restoreEngine($macId);
+
+    $ok = ($response['success'] ?? null);
+
+    return response()->json([
+        'success' => ($ok === null) ? true : (strtolower((string)$ok) === 'true' || $ok === true || $ok === 1),
+        'command_sent' => $isOn ? 'CUT_ENGINE' : 'RESTORE_ENGINE',
+        'previous_state' => $engineState,
+        'expected_new_state' => $isOn ? 'CUT' : 'ON',
+        'gps_response' => $response,
+    ]);
+}
+
 
     /* ============================================================
        ███   EXTRACTION GEOfence POLYGON

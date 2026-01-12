@@ -609,36 +609,143 @@ class GpsControlService
     }
 
     public function getEngineStatusFromLastLocation(string $macId): array
-    {
-        $loc = Location::query()
-            ->where('mac_id_gps', $macId)
-            ->orderByDesc('datetime')
-            ->first();
+{
+    $macId = trim($macId);
+    if ($macId === '') {
+        return ['success' => false, 'message' => 'mac_id_gps vide'];
+    }
 
-        if (!$loc) {
-            return [
-                'success' => false,
-                'message' => 'Aucune location trouvée pour ce mac_id_gps',
-            ];
+    /**
+     * ✅ Provider FIRST
+     * - on se met sur le bon compte via sim_gps.account_name
+     * - on récupère objectid (user_id provider) depuis la DB
+     * - on appelle getUserAndGpsInfoByIDsUtcNew (via getLatestLocationByUserId)
+     */
+    try {
+        // ✅ AUTO-ACCOUNT selon sim_gps.account_name
+        $this->ensureAccountForMacId($macId);
+
+        // (optionnel mais utile) petit cache anti-spam UI : 8 secondes
+        $cacheKey = "gps18gps:engine_status:{$this->account}:{$macId}";
+
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) return $cached;
+
+        // 1) userId direct depuis DB (beaucoup + rapide que getDeviceList à chaque fois)
+        $userId = (string) (SimGps::query()->where('mac_id', $macId)->value('objectid') ?? '');
+        $userId = trim($userId);
+
+        // fallback si objectid absent en DB
+        if ($userId === '') {
+            $devices = $this->getAccountDeviceList();
+            $userId = (string) ($this->resolveUserIdFromDeviceList($macId, $devices) ?? '');
+            $userId = trim($userId);
         }
 
-        $decoded = $this->decodeEngineStatus($loc->status);
+        if ($userId === '') {
+            $resp = [
+                'success' => false,
+                'message' => 'Impossible de résoudre user_id/objectid pour ce mac_id (device introuvable)',
+                'mac_id_gps' => $macId,
+            ];
+            Cache::put($cacheKey, $resp, now()->addSeconds(5));
+            return $resp;
+        }
 
-        return [
+        // 2) dernier record provider
+        $record = $this->getLatestLocationByUserId($userId, null, null);
+
+        if (!$record || !is_array($record)) {
+            $resp = [
+                'success' => false,
+                'message' => 'Aucun dernier record provider (ou erreur provider)',
+                'mac_id_gps' => $macId,
+                'user_id' => $userId,
+            ];
+            Cache::put($cacheKey, $resp, now()->addSeconds(5));
+            return $resp;
+        }
+
+        // 3) décodage du statut moteur
+        $decoded = $this->decodeEngineStatus((string)($record['status'] ?? null));
+
+        $speed = 0.0;
+        if (isset($record['su'])) $speed = (float) $record['su'];
+        elseif (isset($record['speed'])) $speed = (float) $record['speed'];
+
+        $heart = $this->parseTimeToDateTimeString($record['heart_time'] ?? null);
+        $sys   = $this->parseTimeToDateTimeString($record['sys_time'] ?? null);
+        $dt    = $this->parseTimeToDateTimeString($record['datetime'] ?? null);
+
+        $datetime = (string) ($this->firstNonEmpty($dt, $heart, $sys) ?? '');
+
+        $resp = [
             'success' => true,
             'mac_id_gps' => $macId,
-            'datetime' => (string) $loc->datetime,
-            'speed' => (float) ($loc->speed ?? 0),
+            'datetime' => $datetime,
+            'speed' => $speed,
             'decoded' => $decoded,
             'location' => [
-                'longitude' => (float) $loc->longitude,
-                'latitude' => (float) $loc->latitude,
-                'direction' => $loc->direction,
-                'sys_time' => $loc->sys_time,
-                'heart_time' => $loc->heart_time,
+                'longitude' => (float) ($record['jingdu'] ?? $record['longitude'] ?? 0),
+                'latitude'  => (float) ($record['weidu'] ?? $record['latitude'] ?? 0),
+                'direction' => $record['hangxiang'] ?? $record['direction'] ?? null,
+                'sys_time'  => $sys,
+                'heart_time'=> $heart,
             ],
+            // optionnel : aide debug
+            'source' => 'provider',
+            'account' => $this->account,
+            'user_id' => $userId,
+        ];
+
+        Cache::put($cacheKey, $resp, now()->addSeconds(8));
+        return $resp;
+
+    } catch (\Throwable $e) {
+        Log::warning('[GPS] getEngineStatusFromLastLocation provider failed', [
+            'macid' => $macId,
+            'account' => $this->account,
+            'error' => $e->getMessage(),
+        ]);
+        // on continue en fallback DB ci-dessous
+    }
+
+    /**
+     * 🔁 Fallback DB (au cas où le provider est down)
+     * Tu peux le supprimer si tu veux ABSOLUMENT uniquement provider.
+     */
+    $loc = Location::query()
+        ->where('mac_id_gps', $macId)
+        ->orderByDesc('datetime')
+        ->first();
+
+    if (!$loc) {
+        return [
+            'success' => false,
+            'message' => 'Aucune location trouvée (DB) et provider indisponible',
+            'mac_id_gps' => $macId,
         ];
     }
+
+    $decoded = $this->decodeEngineStatus($loc->status);
+
+    return [
+        'success' => true,
+        'mac_id_gps' => $macId,
+        'datetime' => (string) $loc->datetime,
+        'speed' => (float) ($loc->speed ?? 0),
+        'decoded' => $decoded,
+        'location' => [
+            'longitude' => (float) $loc->longitude,
+            'latitude'  => (float) $loc->latitude,
+            'direction' => $loc->direction,
+            'sys_time'  => $loc->sys_time,
+            'heart_time'=> $loc->heart_time,
+        ],
+        'source' => 'db_fallback',
+    ];
+}
+
 
     /* =========================================================
      * 5) DEVICE LIST
@@ -983,4 +1090,63 @@ class GpsControlService
             'location_id' => $saved?->id,
         ];
     }
+
+
+
+
+
+
+    // helper 
+
+    private function parseTimeToDateTimeString($value): ?string
+{
+    if ($value === null) return null;
+
+    // numeric (int/float/string)
+    if (is_numeric($value)) {
+        $n = (int) $value;
+
+        // heuristique : > 10^12 = millisecondes
+        if ($n > 1000000000000) {
+            return $this->msToCarbon($n)?->toDateTimeString();
+        }
+
+        // secondes (epoch)
+        if ($n > 1000000000) {
+            try {
+                return \Carbon\Carbon::createFromTimestamp($n)->setTimezone(config('app.timezone'))->toDateTimeString();
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+    }
+
+    // string date
+    if (is_string($value)) {
+        $s = trim($value);
+        if ($s === '') return null;
+
+        // si c'est une string numérique ms/sec
+        if (is_numeric($s)) return $this->parseTimeToDateTimeString((int)$s);
+
+        try {
+            return \Carbon\Carbon::parse($s)->setTimezone(config('app.timezone'))->toDateTimeString();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    return null;
+}
+
+private function firstNonEmpty(...$values)
+{
+    foreach ($values as $v) {
+        if ($v === null) continue;
+        if (is_string($v) && trim($v) === '') continue;
+        return $v;
+    }
+    return null;
+}
+
 }
