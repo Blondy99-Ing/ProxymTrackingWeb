@@ -11,14 +11,12 @@ use App\Services\GpsControlService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Carbon\Carbon;
 
 class ControlGpsController extends Controller
 {
     public function __construct(private GpsControlService $gps) {}
 
-    /**
-     * PAGE INDEX – Liste + Form
-     */
     public function index(Request $request)
     {
         $voitures = Voiture::all();
@@ -26,7 +24,7 @@ class ControlGpsController extends Controller
     }
 
     /**
-     * ✅ BATCH: 1 appel pour tous les statuts (moteur + gps)
+     * ✅ BATCH: LIVE 18GPS
      * GET /voitures/engine-status/batch?ids=1,2,3
      */
     public function engineStatusBatch(Request $request)
@@ -47,46 +45,69 @@ class ControlGpsController extends Controller
 
         $voitures = Voiture::query()
             ->whereIn('id', $ids->all())
-            ->get(['id', 'mac_id_gps']);
-
-        $voituresById = $voitures->keyBy('id');
-
-        $macs = $voitures->pluck('mac_id_gps')->filter()->unique()->values()->all();
-        $lastLocationsByMac = $this->fetchLastLocationsByMac($macs);
+            ->get(['id', 'mac_id_gps'])
+            ->keyBy('id');
 
         $out = [];
+
         foreach ($ids as $id) {
-            if (!isset($voituresById[$id])) {
+            $v = $voitures[$id] ?? null;
+            if (!$v) {
                 $out[$id] = ['success' => false, 'message' => 'VEHICLE_NOT_FOUND'];
                 continue;
             }
 
-            $v = $voituresById[$id];
             $mac = (string) $v->mac_id_gps;
-
             if ($mac === '') {
                 $out[$id] = ['success' => false, 'message' => 'NO_MAC_ID'];
                 continue;
             }
 
-            $loc = $lastLocationsByMac[$mac] ?? null;
-            if (!$loc) {
-                $out[$id] = ['success' => false, 'message' => 'NO_LOCATION'];
+            $status = $this->gps->getEngineStatusFromLastLocation($mac);
+
+            if (!($status['success'] ?? false)) {
+                $out[$id] = [
+                    'success' => false,
+                    'message' => $status['message'] ?? 'ENGINE_STATUS_FAILED',
+                    'meta' => [
+                        'source'  => $status['source'] ?? null,
+                        'account' => $status['account'] ?? null,
+                    ],
+                ];
                 continue;
             }
 
-            $decoded = $this->gps->decodeEngineStatus($loc->status);
-            $cut = (($decoded['engineState'] ?? 'UNKNOWN') === 'CUT');
+            $engineState = $status['decoded']['engineState'] ?? 'UNKNOWN';
+            $cut = ($engineState === 'CUT');
+
+            $lastSeen = $status['location']['heart_time']
+                ?? $status['location']['sys_time']
+                ?? $status['datetime']
+                ?? null;
+
+            $online = null;
+            if ($lastSeen) {
+                try {
+                    $online = \Carbon\Carbon::parse($lastSeen)->diffInMinutes(now()) <= 10;
+                } catch (\Throwable) {
+                    $online = null;
+                }
+            }
 
             $out[$id] = [
                 'success' => true,
                 'engine' => [
                     'cut' => $cut,
-                    'engineState' => $decoded['engineState'] ?? 'UNKNOWN',
+                    'engineState' => $engineState,
                 ],
                 'gps' => [
-                    'online' => $this->isGpsOnline($loc),
-                    'last_seen' => (string) ($loc->heart_time ?? $loc->sys_time ?? $loc->datetime),
+                    'online' => $online,
+                    'last_seen' => $lastSeen,
+                ],
+                'meta' => [
+                    'source'  => $status['source'] ?? null,
+                    'account' => $status['account'] ?? null,
+                    'user_id' => $status['user_id'] ?? null,
                 ],
             ];
         }
@@ -95,7 +116,7 @@ class ControlGpsController extends Controller
     }
 
     /**
-     * ✅ 1 véhicule
+     * ✅ 1 véhicule - LIVE 18GPS
      * GET /voitures/{voiture}/engine-status
      */
     public function engineStatus(Voiture $voiture)
@@ -105,123 +126,166 @@ class ControlGpsController extends Controller
             return response()->json(['success' => false, 'message' => 'NO_MAC_ID'], 422);
         }
 
-        $loc = Location::query()
-            ->where('mac_id_gps', $mac)
-            ->orderByDesc('datetime')
-            ->first();
+        $status = $this->gps->getEngineStatusFromLastLocation($mac);
 
-        if (!$loc) {
-            return response()->json(['success' => false, 'message' => 'NO_LOCATION'], 404);
+        if (!($status['success'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => $status['message'] ?? 'ENGINE_STATUS_FAILED',
+                'macid'   => $mac,
+                'raw'     => $status,
+            ], 502);
         }
 
-        $decoded = $this->gps->decodeEngineStatus($loc->status);
-        $cut = (($decoded['engineState'] ?? 'UNKNOWN') === 'CUT');
+        $engineState = $status['decoded']['engineState'] ?? 'UNKNOWN';
+        $cut = ($engineState === 'CUT');
+
+        $lastSeen = $status['location']['heart_time']
+            ?? $status['location']['sys_time']
+            ?? $status['datetime']
+            ?? null;
+
+        $online = null;
+        if ($lastSeen) {
+            try {
+                $online = \Carbon\Carbon::parse($lastSeen)->diffInMinutes(now()) <= 10;
+            } catch (\Throwable) {
+                $online = null;
+            }
+        }
 
         return response()->json([
             'success' => true,
             'engine' => [
                 'cut' => $cut,
-                'engineState' => $decoded['engineState'] ?? 'UNKNOWN',
+                'engineState' => $engineState,
             ],
             'gps' => [
-                'online' => $this->isGpsOnline($loc),
-                'last_seen' => (string) ($loc->heart_time ?? $loc->sys_time ?? $loc->datetime),
+                'online' => $online,
+                'last_seen' => $lastSeen,
+            ],
+            'meta' => [
+                'source'  => $status['source'] ?? null,
+                'account' => $status['account'] ?? null,
+                'user_id' => $status['user_id'] ?? null,
             ],
         ]);
     }
 
     /**
-     * ✅ Toggle + log DB seulement si SEND_OK
+     * ✅ Toggle - décide sur statut LIVE 18GPS (IMPORTANT)
      * POST /voitures/{voiture}/toggle-engine
      */
-    public function toggleEngine(Request $request, Voiture $voiture)
-    {
-        $mac = (string) $voiture->mac_id_gps;
-        if ($mac === '') {
-            return response()->json(['success' => false, 'message' => 'NO_MAC_ID'], 422);
-        }
+public function toggleEngine(Request $request, Voiture $voiture)
+{
+    $mac = (string) $voiture->mac_id_gps;
+    if ($mac === '') {
+        return response()->json(['success' => false, 'message' => 'NO_MAC_ID'], 422);
+    }
 
-        // (1) on tente de se caler sur le bon compte via sim_gps.account_name
-        $accDb = $this->getAccountFromDb($mac);
-        if ($accDb) {
-            $this->gps->setAccount($accDb);
-            // optionnel : si tu suspectes des tokens “croisés”
-            // $this->gps->resetGpsToken();
-        }
+    // ✅ action demandée par le frontend (PRIORITAIRE)
+    $action = strtolower(trim((string) $request->input('action', ''))); // cut | restore
 
-        // état actuel (DB locations)
-        $loc = Location::query()->where('mac_id_gps', $mac)->orderByDesc('datetime')->first();
-        $decoded = $this->gps->decodeEngineStatus($loc?->status);
-        $currentlyCut = (($decoded['engineState'] ?? 'UNKNOWN') === 'CUT');
+    if (!in_array($action, ['cut', 'restore'], true)) {
+        // fallback (si jamais front n'envoie rien) : on tente live provider
+        // ⚠️ sans changer le service, on peut juste vider le cache avant lecture
+        Cache::forget("gps18gps:engine_status:tracking:{$mac}");
+        Cache::forget("gps18gps:engine_status:mobility:{$mac}");
 
+        $statusLive = $this->gps->getEngineStatusFromLastLocation($mac);
+        $engineState = $statusLive['decoded']['engineState'] ?? 'UNKNOWN';
+        $currentlyCut = ($engineState === 'CUT');
         $action = $currentlyCut ? 'restore' : 'cut';
+    }
 
-        // (2) envoi provider
+    // (1) se caler sur le bon compte si connu
+    $accDb = $this->getAccountFromDb($mac);
+    if ($accDb) {
+        $this->gps->setAccount($accDb);
+    }
+
+    // (2) envoi provider
+    $providerResp = $action === 'cut'
+        ? $this->gps->cutEngine($mac)
+        : $this->gps->restoreEngine($mac);
+
+    $parsed = $this->parseSendCommandResponse($providerResp);
+
+    // ✅ file saturée → clear + retry 1 fois
+    if (!$parsed['ok'] && strtoupper((string)$parsed['returnMsg']) === 'CMD_EXCEEDLENGTH') {
+        $this->gps->clearCmdList($mac);
+
         $providerResp = $action === 'cut'
             ? $this->gps->cutEngine($mac)
             : $this->gps->restoreEngine($mac);
 
         $parsed = $this->parseSendCommandResponse($providerResp);
-
-        // ✅ si file saturée → clear + retry 1 fois
-        if (!$parsed['ok'] && strtoupper((string)$parsed['returnMsg']) === 'CMD_EXCEEDLENGTH') {
-            $this->gps->clearCmdList($mac);
-
-            $providerResp = $action === 'cut'
-                ? $this->gps->cutEngine($mac)
-                : $this->gps->restoreEngine($mac);
-
-            $parsed = $this->parseSendCommandResponse($providerResp);
-        }
-
-        // ✅ si device pas dans le compte → switch tracking/mobility + retry 1 fois
-        if (!$parsed['ok'] && $this->isWrongAccountMsg($parsed['returnMsg'] ?? '')) {
-            $current = $this->gps->getAccount();
-            $other = ($current === 'tracking') ? 'mobility' : 'tracking';
-
-            // on met à jour sim_gps.account_name pour éviter que le service rebascule mal ensuite
-            $this->upsertAccountForMac($mac, $other);
-
-            $this->gps->setAccount($other);
-            $this->gps->resetGpsToken(); // force un login du bon compte
-
-            $providerResp = $action === 'cut'
-                ? $this->gps->cutEngine($mac)
-                : $this->gps->restoreEngine($mac);
-
-            $parsed = $this->parseSendCommandResponse($providerResp);
-        }
-
-        if (!$parsed['ok']) {
-            return response()->json([
-                'success' => false,
-                'message' => $parsed['message'],
-                'return_msg' => $parsed['returnMsg'],
-                'provider' => $providerResp,
-            ], 422);
-        }
-
-        $cmdNo = $parsed['cmdNo'];
-        $employeId = $this->currentEmployeId();
-
-        Commande::updateOrCreate(
-            ['CmdNo' => $cmdNo],
-            [
-                'user_id'     => null,
-                'employe_id'  => $employeId,
-                'vehicule_id' => $voiture->id,
-                'status'      => 'SEND_OK',
-            ]
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => $action === 'cut' ? 'Commande coupure OK' : 'Commande allumage OK',
-            'cmd_no' => $cmdNo,
-            'return_msg' => $parsed['returnMsg'],
-            'engine' => ['cut' => ($action === 'cut')],
-        ]);
     }
+
+    // ✅ mauvais compte → switch + retry 1 fois
+    if (!$parsed['ok'] && $this->isWrongAccountMsg($parsed['returnMsg'] ?? '')) {
+        $current = $this->gps->getAccount();
+        $other = ($current === 'tracking') ? 'mobility' : 'tracking';
+
+        $this->upsertAccountForMac($mac, $other);
+
+        $this->gps->setAccount($other);
+        $this->gps->resetGpsToken();
+
+        $providerResp = $action === 'cut'
+            ? $this->gps->cutEngine($mac)
+            : $this->gps->restoreEngine($mac);
+
+        $parsed = $this->parseSendCommandResponse($providerResp);
+    }
+
+    if (!$parsed['ok']) {
+        return response()->json([
+            'success' => false,
+            'message' => $parsed['message'],
+            'return_msg' => $parsed['returnMsg'],
+            'provider' => $providerResp,
+        ], 422);
+    }
+
+    $cmdNo = $parsed['cmdNo'];
+    $employeId = $this->currentEmployeId();
+    $typeCommande = $action === 'cut' ? 'COUPURE' : 'ALLUMAGE';
+
+    Commande::updateOrCreate(
+        ['CmdNo' => $cmdNo],
+        [
+            'user_id'     => null,
+            'employe_id'  => $employeId,
+            'vehicule_id' => $voiture->id,
+            'status'      => 'SEND_OK',
+            'type_commande' => $typeCommande,
+
+        ]
+    );
+
+    // ✅ IMPORTANT: vider le cache engine_status (sans modifier le service)
+    Cache::forget("gps18gps:engine_status:tracking:{$mac}");
+    Cache::forget("gps18gps:engine_status:mobility:{$mac}");
+
+    // ✅ lecture live immédiate (souvent OK en 1–2s si le tracker remonte vite)
+    $after = $this->gps->getEngineStatusFromLastLocation($mac);
+
+    return response()->json([
+        'success' => true,
+        'message' => $action === 'cut' ? 'Commande coupure envoyée (SEND_OK)' : 'Commande allumage envoyée (SEND_OK)',
+        'cmd_no' => $cmdNo,
+        'return_msg' => $parsed['returnMsg'],
+        'requested_action' => $action,
+        'engine' => [
+            'cut' => ($action === 'cut'),
+        ],
+        // ✅ utile pour mettre à jour vite côté UI
+        'status_after' => $after,
+    ]);
+}
+
+
 
     /* ====================== Helpers ====================== */
 
@@ -235,52 +299,32 @@ class ControlGpsController extends Controller
 
         if (!$globalOk) {
             $msg = (string) ($resp['errorDescribe'] ?? $resp['msg'] ?? $resp['message'] ?? 'Commande échouée');
-            return [
-                'ok' => false,
-                'cmdNo' => null,
-                'returnMsg' => null,
-                'message' => $msg,
-            ];
+            return ['ok' => false, 'cmdNo' => null, 'returnMsg' => null, 'message' => $msg];
         }
 
         $row = $resp['data'][0] ?? null;
         if (!is_array($row)) {
-            return [
-                'ok' => false,
-                'cmdNo' => null,
-                'returnMsg' => null,
-                'message' => 'Commande non confirmée (data vide)',
-            ];
+            return ['ok' => false, 'cmdNo' => null, 'returnMsg' => null, 'message' => 'Commande non confirmée (data vide)'];
         }
 
-        $returnMsg = strtoupper(trim((string) ($row['ReturnMsg'] ?? $row['returnMsg'] ?? '')));
+        $returnMsgRaw = (string) ($row['ReturnMsg'] ?? $row['returnMsg'] ?? '');
+        $returnMsg = strtoupper(trim($returnMsgRaw));
         $cmdNo = trim((string) ($row['CmdNo'] ?? $row['cmdNo'] ?? ''));
 
         if ($returnMsg !== 'SEND_OK') {
-            // ex: CMD_EXCEEDLENGTH / CMD_NOT_SUPPORT / ou message chinois…
             return [
                 'ok' => false,
                 'cmdNo' => null,
-                'returnMsg' => (string) ($row['ReturnMsg'] ?? $row['returnMsg'] ?? null),
-                'message' => (string) ($row['ReturnMsg'] ?? $row['returnMsg'] ?? 'Commande refusée'),
+                'returnMsg' => $returnMsgRaw,
+                'message' => $returnMsgRaw !== '' ? $returnMsgRaw : 'Commande refusée',
             ];
         }
 
         if ($cmdNo === '') {
-            return [
-                'ok' => false,
-                'cmdNo' => null,
-                'returnMsg' => $returnMsg,
-                'message' => 'SEND_OK mais CmdNo manquant',
-            ];
+            return ['ok' => false, 'cmdNo' => null, 'returnMsg' => $returnMsg, 'message' => 'SEND_OK mais CmdNo manquant'];
         }
 
-        return [
-            'ok' => true,
-            'cmdNo' => $cmdNo,
-            'returnMsg' => $returnMsg,
-            'message' => 'SEND_OK',
-        ];
+        return ['ok' => true, 'cmdNo' => $cmdNo, 'returnMsg' => $returnMsg, 'message' => 'SEND_OK'];
     }
 
     private function currentEmployeId(): ?int
@@ -291,44 +335,6 @@ class ControlGpsController extends Controller
         } catch (\Throwable) {}
 
         return Auth::check() ? (int) Auth::id() : null;
-    }
-
-    private function fetchLastLocationsByMac(array $macIds): array
-    {
-        if (empty($macIds)) return [];
-
-        $sub = Location::query()
-            ->selectRaw('mac_id_gps, MAX(`datetime`) as max_dt')
-            ->whereIn('mac_id_gps', $macIds)
-            ->groupBy('mac_id_gps');
-
-        $rows = Location::query()
-            ->joinSub($sub, 't', function ($join) {
-                $join->on('locations.mac_id_gps', '=', 't.mac_id_gps')
-                    ->on('locations.datetime', '=', 't.max_dt');
-            })
-            ->get([
-                'locations.mac_id_gps',
-                'locations.datetime',
-                'locations.status',
-                'locations.heart_time',
-                'locations.sys_time',
-            ]);
-
-        return $rows->keyBy('mac_id_gps')->all();
-    }
-
-    private function isGpsOnline($loc): ?bool
-    {
-        $last = $loc->heart_time ?? $loc->sys_time ?? $loc->datetime;
-        if (!$last) return null;
-
-        try {
-            $dt = \Carbon\Carbon::parse($last);
-            return $dt->diffInMinutes(now()) <= 10;
-        } catch (\Throwable) {
-            return null;
-        }
     }
 
     private function getAccountFromDb(string $macId): ?string
@@ -343,13 +349,11 @@ class ControlGpsController extends Controller
         $account = strtolower(trim($account));
         if (!in_array($account, ['tracking', 'mobility'], true)) return;
 
-        // upsert minimal (si tu veux éviter insert, fais un update simple)
         SimGps::query()->updateOrCreate(
             ['mac_id' => $macId],
             ['account_name' => $account]
         );
 
-        // flush cache de résolution compte (même clé que dans ton service)
         Cache::forget("gps18gps:macid_account:" . $macId);
     }
 
@@ -358,10 +362,8 @@ class ControlGpsController extends Controller
         $msg = trim((string) $returnMsg);
         if ($msg === '') return false;
 
-        // message chinois observé
         if (str_contains($msg, '不属于本账号') || str_contains($msg, '不存在')) return true;
 
-        // variantes possibles en anglais
         $low = strtolower($msg);
         return str_contains($low, 'not belong') || str_contains($low, 'does not belong') || str_contains($low, 'not exist');
     }

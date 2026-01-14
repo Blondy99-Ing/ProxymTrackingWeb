@@ -10,7 +10,9 @@ use Illuminate\Support\Facades\Log;
 
 class AlertController extends Controller
 {
-        protected function typeLabel(?string $type): string
+      
+    
+    protected function typeLabel(?string $type): string
     {
         if (!$type) return 'Unknown';
 
@@ -110,22 +112,29 @@ class AlertController extends Controller
         ]);
     }
 
-    public function markAsProcessed(Request $request, $id)
-    {
-        $alert = Alert::findOrFail($id);
+  public function markAsProcessed(Request $request, $id)
+{
+    $data = $request->validate([
+        'commentaire' => ['nullable', 'string', 'max:2000'],
+    ]);
 
-        $alert->processed = true;
-        $alert->processed_by = Auth::id();
-        $alert->save();
+    $alert = Alert::findOrFail($id);
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Alerte marquée comme traitée',
-            'data' => [
-                'id' => $alert->id,
-                'processed' => true,
-                'processed_by' => $alert->processed_by,
-            ]
-        ]);
-    }
+    $alert->processed = true;
+    $alert->processed_by = Auth::id();
+    $alert->commentaire = $data['commentaire'] ?? null; 
+    $alert->save();
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Alerte marquée comme traitée',
+        'data' => [
+            'id' => $alert->id,
+            'processed' => true,
+            'processed_by' => $alert->processed_by,
+            'commentaire' => $alert->commentaire,
+        ]
+    ]);
+}
+
 }

@@ -15,6 +15,7 @@ use App\Http\Controllers\Users\ProfileController;
 use App\Http\Controllers\Alert\AlertController;
 use App\Http\Controllers\Trajets\TrajetController;
 use App\Http\Controllers\Gps\ControlGpsController;
+use App\Http\Controllers\Gps\HistoriqueCoupureController;
 use App\Http\Controllers\GpsSimController;
 
 
@@ -101,6 +102,7 @@ Route::get('/voitures/{id}/geofence', [VoitureController::class, 'detailsVehicul
 Route::prefix('voitures')->group(function () {
          Route::get('engine/action', [ControlGpsController::class, 'index'])
             ->name('engine.action.index');
+      
         Route::get('engine-status/batch', [ControlGpsController::class, 'engineStatusBatch'])
             ->name('voitures.engineStatusBatch');
 
@@ -110,6 +112,10 @@ Route::prefix('voitures')->group(function () {
         Route::post('{voiture}/toggle-engine', [ControlGpsController::class, 'toggleEngine'])
             ->name('voitures.toggleEngine');
     });
+  
+ Route::get('/engine/actions/history', [\App\Http\Controllers\Gps\HistoriqueCoupureController::class, 'index'])
+    ->name('engine.action.history');
+
 
 
    
