@@ -6,75 +6,78 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Voiture;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\DashboardCacheService;
 
 class AssociationController extends Controller
 {
-    
+    public function __construct(private DashboardCacheService $cache) {}
+
     public function index()
-{
-    $users = User::all();
-    $voitures = Voiture::all(); // 🔁 au lieu de whereDoesntHave('utilisateur')
-    $associations = Voiture::with('utilisateur')->whereHas('utilisateur')->get();
+    {
+        $users = User::all();
+        $voitures = Voiture::all(); // tu veux toutes les voitures
+        $associations = Voiture::with('utilisateur')->whereHas('utilisateur')->get();
 
-    return view('associations.association', compact('users', 'voitures', 'associations'));
-}
-
-   public function associerVoitureAUtilisateur(Request $request)
-{
-    Log::info('Request POST association: ', $request->all());
-
-    $request->validate([
-        'user_unique_id'   => 'required|exists:users,user_unique_id',
-        'voiture_unique_id'=> 'required|array',
-        'mode'             => 'nullable|in:create,edit',
-    ]);
-
-    $mode = $request->input('mode', 'create');
-
-    $user = User::where('user_unique_id', $request->user_unique_id)->firstOrFail();
-    $voitureIds = $request->voiture_unique_id;
-
-    foreach ($voitureIds as $voitureUniqueId) {
-        $voiture = Voiture::where('voiture_unique_id', $voitureUniqueId)->firstOrFail();
-
-        if ($mode === 'create') {
-            if ($voiture->utilisateur()->exists()) {
-                return redirect()->back()->with('error', "La voiture {$voiture->immatriculation} est déjà associée.");
-            }
-        }
-
-        if ($mode === 'edit') {
-            // On enlève toutes les anciennes associations pour ce véhicule
-            $voiture->utilisateur()->detach();
-        }
-
-        // On associe le nouveau user
-        $voiture->utilisateur()->syncWithoutDetaching([$user->id]);
-
-        Log::info("Voiture {$voiture->immatriculation} associée à l'utilisateur {$user->nom} (mode: {$mode})");
+        return view('associations.association', compact('users', 'voitures', 'associations'));
     }
 
-    $message = $mode === 'edit'
-        ? 'Association mise à jour avec succès.'
-        : 'Associations effectuées avec succès.';
+    public function associerVoitureAUtilisateur(Request $request)
+    {
+        Log::info('Request POST association: ', $request->all());
 
-    return redirect()->back()->with('success', $message);
-}
+        $request->validate([
+            'user_unique_id'    => 'required|exists:users,user_unique_id',
+            'voiture_unique_id' => 'required|array|min:1',
+            'voiture_unique_id.*' => 'required|exists:voitures,voiture_unique_id',
+            'mode'              => 'nullable|in:create,edit',
+        ]);
 
+        $mode = $request->input('mode', 'create');
 
-   public function destroy($id)
-{
-    // ici $id = ID de la voiture, reçu depuis la vue
-    $voiture = Voiture::with('utilisateur')->findOrFail($id);
+        $user = User::where('user_unique_id', $request->user_unique_id)->firstOrFail();
+        $voitureIds = $request->voiture_unique_id;
 
-    // On supprime toutes les associations user <-> cette voiture
-    $voiture->utilisateur()->detach();
+        foreach ($voitureIds as $voitureUniqueId) {
+            $voiture = Voiture::where('voiture_unique_id', $voitureUniqueId)->firstOrFail();
 
-    return redirect()->back()->with('success', 'Association supprimée avec succès.');
-}
+            if ($mode === 'create') {
+                // Si tu veux "1 user max par voiture"
+                if ($voiture->utilisateur()->exists()) {
+                    return redirect()->back()->with('error', "La voiture {$voiture->immatriculation} est déjà associée.");
+                }
+            }
 
+            if ($mode === 'edit') {
+                $voiture->utilisateur()->detach(); // reset
+            }
 
+            $voiture->utilisateur()->syncWithoutDetaching([$user->id]);
 
+            Log::info("Voiture {$voiture->immatriculation} associée à l'utilisateur {$user->nom} (mode: {$mode})");
+        }
+
+        // ✅ refresh Redis (OBLIGATOIRE pour que le SSE pousse les nouveaux chiffres + users)
+        $this->cache->rebuildStats();
+        $this->cache->rebuildFleet();
+        // (alerts plus tard si tu veux)
+
+        $message = $mode === 'edit'
+            ? 'Association mise à jour avec succès.'
+            : 'Associations effectuées avec succès.';
+
+        return redirect()->back()->with('success', $message);
+    }
+
+    public function destroy($id)
+    {
+        $voiture = Voiture::with('utilisateur')->findOrFail($id);
+        $voiture->utilisateur()->detach();
+
+        // ✅ refresh Redis
+        $this->cache->rebuildStats();
+        $this->cache->rebuildFleet();
+
+        return redirect()->back()->with('success', 'Association supprimée avec succès.');
+    }
 }

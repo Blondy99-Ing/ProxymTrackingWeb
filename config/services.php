@@ -42,4 +42,8 @@ return [
         ],
     ],
 
+    
+
+    'dashboard_webhook_secret' => env('DASH_WEBHOOK_SECRET'),
+
 ];

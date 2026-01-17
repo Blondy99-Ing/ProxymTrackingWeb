@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
+use App\Models\Location;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Voiture extends Model
 {
@@ -37,6 +39,13 @@ class Voiture extends Model
 
 
 
+public function latestLocation(): HasOne
+{
+    return $this->hasOne(Location::class, 'mac_id_gps', 'mac_id_gps')
+        ->latestOfMany('datetime'); 
+}
+
+
      // Optionnel si tu veux qu'il sorte automatiquement en JSON
     protected $appends = ['photo_url'];
 
@@ -56,11 +65,6 @@ class Voiture extends Model
 }
 
 
-   public function latestLocation()
-{
-    return $this->hasOne(\App\Models\Location::class, 'mac_id_gps', 'mac_id_gps')
-                ->orderByDesc('datetime'); // <- utiliser datetime ici
-}
 
 
     public function user()

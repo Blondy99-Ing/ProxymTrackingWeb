@@ -206,6 +206,27 @@ Route::prefix('villes')->name('villes.')->group(function () {
 
 
 
+
+
+
+// ✅ SSE global dashboard : stats + fleet + dernières alertes
+//Route::get('/sse/dashboard', [DashboardController::class, 'dashboardStream'])
+//    ->name('dashboard.stream');
+//Route::get('/dashboard', [DashboardController::class,'index'])->name('dashboard');
+Route::get('/dashboard/stream', [DashboardController::class,'dashboardStream'])->name('dashboard.stream');
+Route::get('/dashboard/rebuild-cache', [DashboardController::class,'rebuildCache'])->name('dashboard.rebuild');
+
+// (optionnel) endpoint pour forcer rebuild si tu veux tester rapidement
+Route::post('/dashboard/rebuild', [DashboardController::class, 'rebuildDashboardCache'])
+    ->name('dashboard.rebuild');
+
+
+
+// ✅ SSE page alertes : liste alertes (utile si page alertes est ouverte seule)
+Route::get('/sse/alerts', [AlertController::class, 'alertsStream'])
+    ->name('alerts.stream');
+
+
 });
 
 

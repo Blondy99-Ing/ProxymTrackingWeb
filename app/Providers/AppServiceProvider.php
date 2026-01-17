@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use App\Models\Location;
+use App\Observers\LocationObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,5 +32,7 @@ class AppServiceProvider extends ServiceProvider
             // Partager toutes les informations de l'agence dans toutes les vues
             View::share('agence', $agence);
         }
+
+        Location::observe(LocationObserver::class);
     }
 }

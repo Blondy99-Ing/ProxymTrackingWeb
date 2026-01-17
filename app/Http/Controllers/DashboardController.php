@@ -2,157 +2,133 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
-use App\Models\Voiture;
-use App\Models\Alert;
-use App\Services\GpsControlService;
-use Carbon\Carbon;
-use Illuminate\Http\Request;
+use App\Services\DashboardCacheService;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DashboardController extends Controller
 {
-    public function __construct(private GpsControlService $gps)
-    {
-    }
+    public function __construct(private DashboardCacheService $cache) {}
 
     public function index()
     {
-        // Statistiques
-        $usersCount         = User::count();
-        $vehiclesCount      = Voiture::count();
-        $associationsCount  = Voiture::has('utilisateur')->count();
-        $alertsCount        = Alert::where('processed', false)->count();
-
-        // Tableau des alertes
-        $alerts = Alert::with(['voiture.utilisateur'])
-            ->orderBy('processed', 'asc')
-            ->orderBy('alerted_at', 'desc')
-            ->take(10)
-            ->get()
-            ->map(function ($a) {
-                $voiture = $a->voiture;
-
-                $users = $voiture?->utilisateur
-                    ?->map(fn ($u) => trim(($u->prenom ?? '') . ' ' . ($u->nom ?? '')))
-                    ->filter()
-                    ->implode(', ');
-
-                return [
-                    'vehicle'      => $voiture?->immatriculation ?? 'N/A',
-                    'type'         => $a->type,
-                    'time'         => $a->alerted_at?->format('d/m/Y H:i:s'),
-                    'status'       => $a->processed ? 'Résolu' : 'Ouvert',
-                    'status_color' => $a->processed ? 'bg-green-500' : 'bg-red-500',
-                    'users'        => $users,
-                ];
-            });
-
-        // 📌 Snapshot complet flotte : position + statut moteur + statut GPS + lien profil user
-        $vehicles = $this->buildFleetSnapshot();
-
-        return view('dashboards.index', compact(
-            'usersCount',
-            'vehiclesCount',
-            'associationsCount',
-            'alertsCount',
-            'alerts',
-            'vehicles'
-        ));
-    }
-
-    // 🔁 API temps réel : appelée par le JS du dashboard toutes les 10s
-    public function fleetSnapshot()
-    {
-        $snapshot = $this->buildFleetSnapshot();
-        return response()->json($snapshot);
-    }
-
-    /**
-     * Construit la liste des véhicules avec :
-     * - dernière position
-     * - associations utilisateur
-     * - statut moteur (CUT / ACTIVE)
-     * - statut GPS (online/offline)
-     * - user_id + user_profile_url (pour bouton “voir profil”)
-     */
-    private function buildFleetSnapshot()
-    {
-        return Voiture::with(['latestLocation', 'utilisateur'])
-            ->get()
-            ->filter(function ($v) {
-                return $v->latestLocation
-                    && $v->latestLocation->latitude
-                    && $v->latestLocation->longitude;
-            })
-            ->map(function ($v) {
-                $loc = $v->latestLocation;
-
-                $lat = floatval($loc->latitude);
-                $lon = floatval($loc->longitude);
-
-                // 👤 Utilisateurs associés
-                $usersCollection = $v->utilisateur;
-                $users = $usersCollection
-                    ? $usersCollection
-                        ->map(fn ($u) => trim(($u->prenom ?? '') . ' ' . ($u->nom ?? '')))
-                        ->filter()
-                        ->implode(', ')
-                    : null;
-
-                // ✅ Premier user (pour redirection vers profil)
-                $firstUser = $usersCollection?->first();
-                $userId = $firstUser?->id;
-                $userProfileUrl = $userId ? route('users.profile', ['id' => $userId]) : null;
-
-                // 💡 Décodage moteur via le service
-                $decoded = $this->gps->decodeEngineStatus($loc->status ?? '');
-                $engineState = $decoded['engineState'] ?? 'UNKNOWN';
-                $cut = ($engineState === 'CUT');
-
-                // 💡 Online/offline
-                $online = $this->isGpsOnline($loc);
-                $lastSeen = (string)($loc->heart_time ?? $loc->sys_time ?? $loc->datetime);
-
-                return [
-                    'id'              => $v->id,
-                    'immatriculation' => $v->immatriculation,
-                    'marque'          => $v->marque,
-                    'model'           => $v->model,
-
-                    'users'           => $users,
-
-                    // ✅ AJOUTS POUR LE BOUTON PROFIL
-                    'user_id'          => $userId,
-                    'user_profile_url' => $userProfileUrl,
-
-                    'lat'             => $lat,
-                    'lon'             => $lon,
-                    'status'          => 'En mouvement',
-
-                    'engine' => [
-                        'cut'         => $cut,
-                        'engineState' => $engineState,
-                    ],
-                    'gps' => [
-                        'online'    => $online,
-                        'last_seen' => $lastSeen,
-                    ],
-                ];
-            })
-            ->values();
-    }
-
-    private function isGpsOnline($loc): ?bool
-    {
-        $last = $loc->heart_time ?? $loc->sys_time ?? $loc->datetime;
-        if (!$last) return null;
-
-        try {
-            $dt = Carbon::parse($last);
-            // 🔟 On considère "online" si dernière trame < 10 minutes
-            return $dt->diffInMinutes(now()) <= 10;
-        } catch (\Throwable) {
-            return null;
+        // ✅ Stats (si absent => rebuild)
+        $stats = $this->cache->getStatsFromRedis();
+        if (!$stats) {
+            $stats = $this->cache->rebuildStats();
         }
+
+        // ✅ Fleet (si vide => rebuild)
+        $vehicles = $this->cache->getFleetFromRedis();
+        if (empty($vehicles)) {
+            $vehicles = $this->cache->rebuildFleet();
+        }
+
+        // ✅ Alerts (si vide => rebuild)
+        $alerts = $this->cache->getAlertsFromRedis();
+        if (empty($alerts)) {
+            $alerts = $this->cache->rebuildAlerts(10);
+        }
+
+        // ✅ (Optionnel) si tu veux garantir alertsCount/alertsByType même au 1er load
+        if (!isset($stats['alertsCount']) || !isset($stats['alertsByType'])) {
+            $stats = $this->cache->rebuildStats();
+        }
+
+        return view('dashboards.index', [
+            'usersCount'        => (int)($stats['usersCount'] ?? 0),
+            'vehiclesCount'     => (int)($stats['vehiclesCount'] ?? 0),
+            'associationsCount' => (int)($stats['associationsCount'] ?? 0),
+            'alertsCount'       => (int)($stats['alertsCount'] ?? 0),
+
+            // ✅ la vue attend ces deux variables
+            'vehicles'          => $vehicles,
+            'alerts'            => $alerts,
+        ]);
+    }
+
+    public function dashboardStream(): StreamedResponse
+    {
+        return response()->stream(function () {
+
+            @ini_set('output_buffering', 'off');
+            @ini_set('zlib.output_compression', 0);
+            @ini_set('implicit_flush', 1);
+
+            // libère le lock session
+            try { session()->save(); } catch (\Throwable $e) {}
+            if (function_exists('session_write_close')) @session_write_close();
+
+            echo "event: hello\n";
+            echo "data: {\"ok\":true}\n\n";
+            $this->flushNow();
+
+            // ✅ push initial
+            echo "event: dashboard\n";
+            echo "data: " . $this->buildPayload() . "\n\n";
+            $this->flushNow();
+
+            $lastVersion = $this->cache->getVersion();
+
+            while (!connection_aborted()) {
+                $v = $this->cache->getVersion();
+
+                if ($v !== $lastVersion) {
+                    $lastVersion = $v;
+
+                    echo "event: dashboard\n";
+                    echo "data: " . $this->buildPayload() . "\n\n";
+                    $this->flushNow();
+                } else {
+                    // keep alive
+                    echo ": ping\n\n";
+                    $this->flushNow();
+                }
+
+                // ✅ 120ms = très réactif (ok)
+                usleep(120000);
+            }
+
+        }, 200, [
+            'Content-Type'      => 'text/event-stream; charset=UTF-8',
+            'Cache-Control'     => 'no-cache, no-store, must-revalidate',
+            'Pragma'            => 'no-cache',
+            'Connection'        => 'keep-alive',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    // ✅ Endpoint debug / test
+    public function rebuildCache()
+    {
+        $all = $this->cache->rebuildAll();
+
+        return response()->json([
+            'ok'      => true,
+            'ts'      => now()->toDateTimeString(),
+            'version' => $this->cache->getVersion(),
+            ...$all,
+        ]);
+    }
+
+    private function buildPayload(): string
+    {
+        $stats  = $this->cache->getStatsFromRedis() ?? [];
+        $fleet  = $this->cache->getFleetFromRedis();
+        $alerts = $this->cache->getAlertsFromRedis();
+
+        return json_encode([
+            'ts'     => now()->toDateTimeString(),
+            'stats'  => $stats,
+            'fleet'  => $fleet,
+            'alerts' => $alerts,
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    private function flushNow(): void
+    {
+        if (function_exists('ob_get_level')) {
+            while (ob_get_level() > 0) { @ob_end_flush(); }
+        }
+        @flush();
     }
 }

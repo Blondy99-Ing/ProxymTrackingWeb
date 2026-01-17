@@ -7,6 +7,7 @@ use App\Models\SimGps;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 /**
  * GpsControlService (18GPS / ASMX)
@@ -1031,40 +1032,7 @@ class GpsControlService
      * 8) Persistance DB (Location)
      * ========================================================= */
 
-    public function saveLatestLocationRecordToDb(array $record, ?string $macIdFallback = null): ?Location
-    {
-        try {
-            $mac = (string) ($record['sim_id'] ?? ($record['macid'] ?? ''));
-            $mac = trim($mac) !== '' ? trim($mac) : (string) $macIdFallback;
-
-            if (!$mac) {
-                Log::warning('[GPS] saveLatestLocationRecordToDb: mac_id_gps missing', [
-                    'account' => $this->account,
-                    'record_keys' => array_keys($record),
-                ]);
-                return null;
-            }
-
-            return Location::create([
-                'sys_time'   => $record['sys_time'] ?? null,
-                'user_name'  => $record['user_name'] ?? null,
-                'longitude'  => $record['jingdu'] ?? ($record['longitude'] ?? null),
-                'latitude'   => $record['weidu'] ?? ($record['latitude'] ?? null),
-                'datetime'   => $record['datetime'] ?? null,
-                'heart_time' => $record['heart_time'] ?? null,
-                'speed'      => $record['su'] ?? ($record['speed'] ?? null),
-                'status'     => $record['status'] ?? null,
-                'direction'  => $record['hangxiang'] ?? ($record['direction'] ?? null),
-                'mac_id_gps' => $mac,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('[GPS] saveLatestLocationRecordToDb exception', [
-                'account' => $this->account,
-                'error' => $e->getMessage(),
-            ]);
-            return null;
-        }
-    }
+  
 
     public function syncLatestLocationByMacId(string $macId, ?string $mapType = null, ?string $option = null): array
     {
@@ -1148,5 +1116,591 @@ private function firstNonEmpty(...$values)
     }
     return null;
 }
+
+
+
+
+public function getCommandResults(string $macId, string $cmdNo): array
+{
+    $this->ensureAccountForMacId($macId);
+
+    return $this->callGetDate('GetCommandResults', [
+        'macid' => trim($macId),
+        'cmdNo' => trim($cmdNo),
+    ], true);
+}
+
+
+
+
+
+
+
+
+
+
+// test l'enregistrement des coordonné dans locations 
+/**
+ * ✅ Sync 1 device (macId) -> enregistre la dernière position 18GPS dans la table locations
+ * - Respecte le principe multi-compte via sim_gps.account_name (tracking|mobility)
+ * - Utilise objectid si dispo (plus rapide), sinon fallback macId -> device list
+ * - Optionnel: anti-dup (si la dernière datetime identique existe déjà)
+ *
+ * @param string $macId
+ * @param bool $avoidDuplicate  éviter d'insérer si datetime identique déjà en DB
+ * @return array{success:bool,message?:string,account?:string,source?:string,location_id?:int,mac_id_gps?:string,user_id?:string,record?:array}
+ */
+public function syncAndSaveLatestLocationByMacId(string $macId, bool $avoidDuplicate = true): array
+{
+    $macId = trim($macId);
+    if ($macId === '') {
+        return ['success' => false, 'message' => 'mac_id_gps vide'];
+    }
+
+    // ✅ se positionner sur le bon compte (tracking/mobility) via sim_gps.account_name
+    $this->ensureAccountForMacId($macId);
+
+    try {
+        // 1) userId/objectid depuis DB (le plus rapide)
+        $userId = (string) (SimGps::query()->where('mac_id', $macId)->value('objectid') ?? '');
+        $userId = trim($userId);
+
+        // 2) dernier record provider
+        $record = null;
+
+        if ($userId !== '') {
+            $record = $this->getLatestLocationByUserId($userId, null, null);
+        } else {
+            // fallback si objectid absent
+            $record = $this->getLatestLocationByMacId($macId, null, null);
+        }
+
+        if (!$record || !is_array($record)) {
+            return [
+                'success' => false,
+                'message' => 'Aucun record provider (ou erreur provider)',
+                'mac_id_gps' => $macId,
+                'account' => $this->account,
+                'user_id' => $userId ?: null,
+            ];
+        }
+
+        // 3) anti-dup simple (si datetime identique déjà en DB)
+        if ($avoidDuplicate) {
+            $dt = $record['datetime'] ?? $record['heart_time'] ?? $record['sys_time'] ?? null;
+
+            if ($dt !== null) {
+                $exists = Location::query()
+                    ->where('mac_id_gps', $macId)
+                    ->where('datetime', $dt)
+                    ->exists();
+
+                if ($exists) {
+                    return [
+                        'success' => true,
+                        'message' => 'Déjà enregistré (duplicate datetime)',
+                        'mac_id_gps' => $macId,
+                        'account' => $this->account,
+                        'source' => 'provider',
+                        'user_id' => $userId ?: null,
+                        'location_id' => null,
+                    ];
+                }
+            }
+        }
+
+        // 4) save DB (mapping déjà géré par ta méthode)
+        $loc = $this->saveLatestLocationRecordToDb($record, $macId);
+
+        if (!$loc) {
+            return [
+                'success' => false,
+                'message' => "Échec enregistrement DB",
+                'mac_id_gps' => $macId,
+                'account' => $this->account,
+                'source' => 'provider',
+                'user_id' => $userId ?: null,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Location enregistrée',
+            'mac_id_gps' => $macId,
+            'account' => $this->account,
+            'source' => 'provider',
+            'user_id' => $userId ?: null,
+            'location_id' => $loc->id,
+            'record' => $record, // optionnel (debug)
+        ];
+    } catch (\Throwable $e) {
+        Log::warning('[GPS] syncAndSaveLatestLocationByMacId failed', [
+            'macid' => $macId,
+            'account' => $this->account,
+            'error' => $e->getMessage(),
+        ]);
+
+        return [
+            'success' => false,
+            'message' => 'Exception: ' . $e->getMessage(),
+            'mac_id_gps' => $macId,
+            'account' => $this->account,
+        ];
+    }
+}
+
+
+
+
+
+/**
+ * Sauvegarde d'un record location (déduplication simple)
+ * ✅ utilise normalizeLocationForDb()
+ */
+public function saveLatestLocationRecordToDb(array $record, string $macId, string $account): array
+{
+    try {
+        $macId = trim($macId);
+        if ($macId === '') {
+            return ['success' => false, 'reason' => 'mac_id missing'];
+        }
+
+        $data = $this->normalizeLocationForDb($record, $macId);
+
+        // on exige au moins sys_time (sinon DB peut planter ou donnée inutile)
+        if (empty($data['sys_time'])) {
+            return ['success' => false, 'reason' => 'sys_time invalid', 'account' => $account];
+        }
+
+        // dédup : mac + sys_time
+        $exists = Location::query()
+            ->where('mac_id_gps', $macId)
+            ->where('sys_time', $data['sys_time'])
+            ->exists();
+
+        if ($exists) {
+            return ['success' => true, 'duplicate' => true, 'account' => $account];
+        }
+
+        Location::create($data);
+
+        return ['success' => true, 'saved' => true, 'account' => $account];
+    } catch (\Throwable $e) {
+        Log::error('[GPS] saveLatestLocationRecordToDb exception', [
+            'account' => $account,
+            'macid' => $macId,
+            'error' => $e->getMessage(),
+        ]);
+
+        return ['success' => false, 'reason' => 'exception', 'account' => $account];
+    }
+}
+
+
+
+
+
+
+
+
+
+
+/* ========================================================================
+ |  GPS -> LOCATIONS (BATCH + NORMALISATION)  ✅ A COLLER EN BAS DU SERVICE
+ |  (Juste avant la dernière accolade "}" de la class GpsControlService)
+ |
+ |  But :
+ |   - Lire tous les mac_id dans sim_gps
+ |   - Utiliser account_name (tracking|mobility) pour l’auth (setAccount)
+ |   - Récupérer le dernier record via objectid (getLatestLocationByUserId)
+ |   - Normaliser via normalizedlactionfordb()
+ |   - Enregistrer dans locations
+ * ====================================================================== */
+
+/**
+ * Normalise le nom de compte (tracking|mobility) avec fallback tracking
+ */
+private function gpsNormalizeAccount(?string $account): string
+{
+    $a = strtolower(trim((string) $account));
+    return in_array($a, ['tracking', 'mobility'], true) ? $a : 'tracking';
+}
+
+/**
+ * Parse date provider -> "Y-m-d H:i:s" (compatible MySQL DATETIME 1000..9999)
+ * - accepte ms / sec / string date
+ * - retourne null si invalide (0, vide, hors plage MySQL, parse impossible)
+ */
+private function gpsParseDateTimeForMysql($value): ?string
+{
+    if ($value === null) return null;
+
+    // string "0" / vide / null-like
+    if (is_string($value)) {
+        $s = trim($value);
+        if ($s === '' || $s === '0' || $s === '0000-00-00 00:00:00') return null;
+
+        // numeric en string
+        if (is_numeric($s)) $value = (int) $s;
+        else {
+            try {
+                $dt = \Carbon\Carbon::parse($s)->setTimezone(config('app.timezone'));
+                $year = (int) $dt->format('Y');
+                if ($year < 1000 || $year > 9999) return null;
+                return $dt->format('Y-m-d H:i:s');
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+    }
+
+    // numeric (ms/sec)
+    if (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value))) {
+        $n = (int) $value;
+        if ($n <= 0) return null;
+
+        try {
+            // heuristique ms vs sec
+            $dt = ($n >= 1000000000000)
+                ? \Carbon\Carbon::createFromTimestampMs($n)
+                : \Carbon\Carbon::createFromTimestamp($n);
+
+            $dt = $dt->setTimezone(config('app.timezone'));
+            $year = (int) $dt->format('Y');
+            if ($year < 1000 || $year > 9999) return null;
+
+            return $dt->format('Y-m-d H:i:s');
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * ✅ Normalisation record provider -> format DB locations
+ * (utilise gpsParseDateTimeForMysql)
+ */
+public function normalizedlactionfordb(array $record, string $macId): array
+{
+    $macId = trim($macId);
+
+    // sys_time (priorités)
+    $sysTime =
+        $this->gpsParseDateTimeForMysql($record['sys_time'] ?? null)
+        ?? $this->gpsParseDateTimeForMysql($record['server_time'] ?? null)
+        ?? $this->gpsParseDateTimeForMysql($record['heart_time'] ?? null)
+        ?? $this->gpsParseDateTimeForMysql($record['datetime'] ?? null);
+
+    // datetime GPS (priorité datetime sinon sys_time)
+    $gpsTime =
+        $this->gpsParseDateTimeForMysql($record['datetime'] ?? null)
+        ?? $sysTime;
+
+    $heartTime = $this->gpsParseDateTimeForMysql($record['heart_time'] ?? null);
+
+    // coords
+    $lng = $record['jingdu'] ?? $record['longitude'] ?? $record['lng'] ?? null;
+    $lat = $record['weidu']  ?? $record['latitude']  ?? $record['lat'] ?? null;
+
+    $lng = is_numeric($lng) ? (float) $lng : null;
+    $lat = is_numeric($lat) ? (float) $lat : null;
+
+    // speed
+    $speed = $record['su'] ?? $record['speed'] ?? null;
+    $speed = is_numeric($speed) ? (float) $speed : null;
+    if ($speed !== null && $speed < 0) $speed = null; // chez toi -9 => invalide
+
+    // direction
+    $direction = $record['hangxiang'] ?? $record['direction'] ?? null;
+    $direction = is_numeric($direction) ? (int) $direction : null;
+
+    // user name
+    $userName = $record['user_name'] ?? $record['userName'] ?? $record['name'] ?? null;
+    $userName = is_string($userName) ? trim($userName) : null;
+    if ($userName === '') $userName = null;
+
+    // status (bits/hex/etc)
+    $status = array_key_exists('status', $record) ? (string) $record['status'] : null;
+
+    return [
+        'sys_time'   => $sysTime,
+        'user_name'  => $userName,
+        'longitude'  => $lng,
+        'latitude'   => $lat,
+        'datetime'   => $gpsTime,
+        'heart_time' => $heartTime,
+        'speed'      => $speed,
+        'status'     => $status,
+        'direction'  => $direction,
+        'mac_id_gps' => $macId,
+    ];
+}
+
+/**
+ * ✅ Save DB (V2) : utilise normalizedlactionfordb()
+ * - skip si sys_time invalide
+ * - anti-dup sur (mac_id_gps + sys_time)
+ */
+private function saveLatestLocationRecordToDbNormalized(array $record, string $macId, bool $avoidDuplicate = true): array
+{
+    try {
+        $macId = trim($macId);
+        if ($macId === '') {
+            return ['success' => false, 'reason' => 'mac_id missing'];
+        }
+
+        $data = $this->normalizedlactionfordb($record, $macId);
+
+        if (empty($data['sys_time'])) {
+            return [
+                'success' => false,
+                'reason' => 'sys_time invalid (skip)',
+                'mac_id_gps' => $macId,
+            ];
+        }
+
+        if ($avoidDuplicate) {
+            $exists = \App\Models\Location::query()
+                ->where('mac_id_gps', $macId)
+                ->where('sys_time', $data['sys_time'])
+                ->exists();
+
+            if ($exists) {
+                return [
+                    'success' => true,
+                    'duplicate' => true,
+                    'mac_id_gps' => $macId,
+                    'sys_time' => $data['sys_time'],
+                ];
+            }
+        }
+
+        $loc = \App\Models\Location::create($data);
+
+        return [
+            'success' => true,
+            'saved' => true,
+            'location_id' => $loc->id,
+            'mac_id_gps' => $macId,
+            'sys_time' => $data['sys_time'],
+        ];
+    } catch (\Throwable $e) {
+        \Illuminate\Support\Facades\Log::error('[GPS] saveLatestLocationRecordToDbNormalized exception', [
+            'account' => $this->account ?? null,
+            'macid' => $macId ?? null,
+            'error' => $e->getMessage(),
+        ]);
+
+        return ['success' => false, 'reason' => 'exception: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * ✅ 1 device : prend SimGps(mac_id) -> account_name -> objectid -> last record -> save locations
+ */
+public function syncAndSaveLatestLocationFromSimGpsByMacId(string $macId, bool $avoidDuplicate = true): array
+{
+    $macId = trim($macId);
+    if ($macId === '') return ['success' => false, 'message' => 'mac_id vide'];
+
+    $sim = \App\Models\SimGps::query()
+        ->select(['mac_id', 'objectid', 'account_name'])
+        ->where('mac_id', $macId)
+        ->first();
+
+    if (!$sim) {
+        return ['success' => false, 'message' => 'mac_id introuvable dans sim_gps', 'mac_id' => $macId];
+    }
+
+    $account = $this->gpsNormalizeAccount($sim->account_name);
+    $userId  = trim((string) ($sim->objectid ?? ''));
+
+    if ($userId === '') {
+        return ['success' => false, 'message' => 'objectid vide dans sim_gps', 'mac_id' => $macId, 'account' => $account];
+    }
+
+    $this->setAccount($account);
+    $this->loginGps(false);
+
+    $record = $this->getLatestLocationByUserId($userId, null, null);
+    if (!$record || !is_array($record)) {
+        return ['success' => false, 'message' => 'Aucun record provider', 'mac_id' => $macId, 'account' => $account, 'user_id' => $userId];
+    }
+
+    $save = $this->saveLatestLocationRecordToDbNormalized($record, $macId, $avoidDuplicate);
+
+    return [
+        'success' => (bool)($save['success'] ?? false),
+        'account' => $account,
+        'mac_id'  => $macId,
+        'user_id' => $userId,
+        'save'    => $save,
+    ];
+}
+
+/**
+ * ✅ BATCH : tous les devices de sim_gps -> locations
+ * Appel tinker :
+ *   $gps->syncAndSaveLatestLocationsFromAllSimGps(true, 200, 50);
+ */
+public function syncAndSaveLatestLocationsFromAllSimGps(
+    bool $forceRefreshLogin = false,
+    int $limit = 200,
+    int $chunkSize = 50,
+    int $sleepMsBetweenDevices = 0,
+    bool $avoidDuplicate = true
+): array {
+    $limit = max(1, (int) $limit);
+    $chunkSize = max(1, (int) $chunkSize);
+    $sleepMsBetweenDevices = max(0, (int) $sleepMsBetweenDevices);
+
+    $rows = \App\Models\SimGps::query()
+        ->select(['mac_id', 'objectid', 'account_name'])
+        ->whereNotNull('mac_id')
+        ->where('mac_id', '<>', '')
+        ->limit($limit)
+        ->get();
+
+    $summary = [
+        'success' => true,
+        'total' => $rows->count(),
+        'saved' => 0,
+        'duplicate' => 0,
+        'skipped' => 0, // sys_time invalid, objectid missing, etc.
+        'failed' => 0,
+        'by_account' => [
+            'tracking' => ['total' => 0, 'saved' => 0, 'duplicate' => 0, 'skipped' => 0, 'failed' => 0],
+            'mobility' => ['total' => 0, 'saved' => 0, 'duplicate' => 0, 'skipped' => 0, 'failed' => 0],
+        ],
+        'failures' => [],
+    ];
+
+    if ($rows->isEmpty()) return $summary;
+
+    // grouper par compte (plus efficace, respecte quand même le compte de chaque mac_id)
+    $groups = $rows->groupBy(function ($r) {
+        $a = strtolower(trim((string) $r->account_name));
+        return in_array($a, ['tracking', 'mobility'], true) ? $a : 'tracking';
+    });
+
+    foreach ($groups as $account => $items) {
+        $account = $this->gpsNormalizeAccount($account);
+
+        $summary['by_account'][$account]['total'] += $items->count();
+
+        $this->setAccount($account);
+        if ($forceRefreshLogin) $this->resetGpsToken();
+        $token = $this->loginGps($forceRefreshLogin);
+
+        if (!$token) {
+            $summary['failed'] += $items->count();
+            $summary['by_account'][$account]['failed'] += $items->count();
+            $summary['failures'][] = ['account' => $account, 'reason' => 'login failed', 'count' => $items->count()];
+            continue;
+        }
+
+        foreach ($items->chunk($chunkSize) as $chunk) {
+            foreach ($chunk as $sim) {
+                $macId = trim((string) $sim->mac_id);
+                $userId = trim((string) ($sim->objectid ?? ''));
+
+                if ($userId === '') {
+                    $summary['skipped']++;
+                    $summary['by_account'][$account]['skipped']++;
+                    $summary['failures'][] = ['mac_id' => $macId, 'account' => $account, 'reason' => 'objectid missing'];
+                    continue;
+                }
+
+                try {
+                    $record = $this->getLatestLocationByUserId($userId, null, null);
+
+                    if (!$record || !is_array($record)) {
+                        $summary['failed']++;
+                        $summary['by_account'][$account]['failed']++;
+                        $summary['failures'][] = [
+                            'mac_id' => $macId,
+                            'account' => $account,
+                            'user_id' => $userId,
+                            'reason' => 'no provider record',
+                        ];
+                        continue;
+                    }
+
+                    $save = $this->saveLatestLocationRecordToDbNormalized($record, $macId, $avoidDuplicate);
+
+                    if (($save['success'] ?? false) && ($save['saved'] ?? false)) {
+                        $summary['saved']++;
+                        $summary['by_account'][$account]['saved']++;
+                    } elseif (($save['success'] ?? false) && ($save['duplicate'] ?? false)) {
+                        $summary['duplicate']++;
+                        $summary['by_account'][$account]['duplicate']++;
+                    } elseif (($save['success'] ?? false) === false && (($save['reason'] ?? '') === 'sys_time invalid (skip)')) {
+                        $summary['skipped']++;
+                        $summary['by_account'][$account]['skipped']++;
+                    } else {
+                        $summary['failed']++;
+                        $summary['by_account'][$account]['failed']++;
+                        $summary['failures'][] = [
+                            'mac_id' => $macId,
+                            'account' => $account,
+                            'user_id' => $userId,
+                            'reason' => $save['reason'] ?? 'save failed',
+                        ];
+                    }
+
+                } catch (\Throwable $e) {
+                    $summary['failed']++;
+                    $summary['by_account'][$account]['failed']++;
+                    $summary['failures'][] = [
+                        'mac_id' => $macId,
+                        'account' => $account,
+                        'user_id' => $userId,
+                        'reason' => $e->getMessage(),
+                    ];
+                }
+
+                if ($sleepMsBetweenDevices > 0) {
+                    usleep($sleepMsBetweenDevices * 1000);
+                }
+            }
+        }
+    }
+
+    return $summary;
+}
+
+/* =========================
+ |  TESTS TINKER (COPIER)
+ |==========================
+ | $gps = app(\App\Services\GpsControlService::class);
+ |
+ | // 1) Test 1 device
+ | $mac = \App\Models\SimGps::whereNotNull('mac_id')->value('mac_id');
+ | dd($gps->syncAndSaveLatestLocationFromSimGpsByMacId($mac, true));
+ |
+ | // 2) Vérifier en DB
+ | \App\Models\Location::where('mac_id_gps', $mac)->orderByDesc('sys_time')->first();
+ |
+ | // 3) Test BATCH petit volume
+ | dd($gps->syncAndSaveLatestLocationsFromAllSimGps(true, 20, 10, 50));
+ */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 }

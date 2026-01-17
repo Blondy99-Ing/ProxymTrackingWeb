@@ -21,7 +21,6 @@ class Location extends Model
         'status',
         'direction',
         'mac_id_gps',
-        'datetime',
     ];
 
     protected $casts = [
