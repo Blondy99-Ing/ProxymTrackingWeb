@@ -10,10 +10,8 @@ class Alert extends Model
 
     protected $fillable = [
         'voiture_id',
-        'type',         // support direct
         'alert_type',   // support legacy column name
         'message',
-        'location',
         'alerted_at',
         'sent',
         'read',

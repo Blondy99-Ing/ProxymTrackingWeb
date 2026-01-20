@@ -3,7 +3,10 @@
 @section('title', 'Trajets sur carte')
 
 @push('head')
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo&callback=initMap" async defer></script>
+<script
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo&callback=initMap&libraries=places,geometry"
+    async defer>
+</script>
 
 <style>
     #map {
@@ -55,6 +58,102 @@
     .trip-row-focus {
         outline: 2px solid rgba(245,130,32,.35);
         background: rgba(245,130,32,.06);
+    }
+
+    /* ---- MAP MODE CARTE ---- */
+    .map-shell{ position: relative; }
+
+    .map-overlay{
+        position:absolute;
+        top:14px;
+        left:14px;
+        z-index: 10;
+        width: min(420px, calc(100% - 28px));
+    }
+
+    .overlay-card{
+        border-radius:16px;
+        background: var(--color-card);
+        border: 1px solid var(--color-border-subtle);
+        padding: 12px;
+        box-shadow: 0 12px 30px rgba(0,0,0,.12);
+    }
+
+    .overlay-title{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        margin-bottom: 8px;
+    }
+
+    .overlay-actions{
+        display:flex;
+        gap:8px;
+        flex-wrap: wrap;
+    }
+
+    .map-mini-btn{
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--color-border-subtle);
+        background: transparent;
+        color: var(--color-text);
+        cursor:pointer;
+        font-size: 12px;
+        transition:.15s;
+        user-select:none;
+    }
+    .map-mini-btn:hover{
+        transform: translateY(-1px);
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+    }
+    .map-mini-btn.active{
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+        background: rgba(245,130,32,.08);
+    }
+
+    .kv{
+        font-size: 12px;
+        color: var(--color-text);
+        line-height: 1.35;
+        margin-top: 8px;
+    }
+    .kv .muted{
+        color: var(--color-text-secondary, #6b7280);
+        font-size: 12px;
+    }
+
+    .poi-list{
+        margin-top: 10px;
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+        max-height: 220px;
+        overflow:auto;
+        padding-right:4px;
+    }
+
+    .poi-item{
+        border: 1px solid var(--color-border-subtle);
+        border-radius: 14px;
+        padding: 10px;
+        background: rgba(255,255,255,.02);
+    }
+    .poi-item b{ font-size: 13px; }
+
+    .poi-meta{
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--color-text-secondary, #6b7280);
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
     }
 </style>
 @endpush
@@ -184,10 +283,7 @@
         <form id="filtersForm" method="GET" action="{{ url()->current() }}"
               class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
 
-            {{-- ✅ IMPORTANT : on n’inclut PAS focus_trajet_id ni mode dans le form
-                => dès qu’on change un filtre => on revient en mode liste (normal)
-            --}}
-
+            {{-- ✅ IMPORTANT : on n’inclut PAS focus_trajet_id ni mode dans le form --}}
             {{-- reset page quand on refiltre --}}
             <input type="hidden" name="page" value="">
 
@@ -255,8 +351,45 @@
         </form>
     </div>
 
-    <!-- MAP -->
-    <div id="map" class="shadow-md border border-border-subtle"></div>
+    <!-- MAP + OVERLAY (MODE CARTE) -->
+    <div class="map-shell">
+        <div class="map-overlay">
+            <div class="overlay-card">
+                <div class="overlay-title">
+                    <div class="font-orbitron font-bold" style="color:var(--color-text)">
+                        <i class="fas fa-map-marker-alt text-primary mr-2"></i> Mode carte
+                    </div>
+                    <div class="overlay-actions">
+                        <button type="button" class="map-mini-btn" id="btnLocate">
+                            <i class="fas fa-crosshairs"></i> Ma position
+                        </button>
+                        <button type="button" class="map-mini-btn" id="btnTraffic">
+                            <i class="fas fa-traffic-light"></i> Trafic
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overlay-actions mb-2">
+                    <button type="button" class="map-mini-btn active" data-maptype="roadmap">Plan</button>
+                    <button type="button" class="map-mini-btn" data-maptype="hybrid">Hybride</button>
+                    <button type="button" class="map-mini-btn" data-maptype="satellite">Satellite</button>
+                    <button type="button" class="map-mini-btn" data-maptype="terrain">Terrain</button>
+                </div>
+
+                <div class="kv" id="whereBox">
+                    <div><b>Lieu :</b> <span id="whereName">—</span></div>
+                    <div class="muted" id="whereCoords">—</div>
+                    <div class="muted" id="whereHint">Astuce : clique sur un trajet pour voir ce qu’il y a autour.</div>
+                </div>
+
+                <div class="poi-list" id="poiList">
+                    <div class="muted" style="font-size:12px;">Autour : en attente…</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="map" class="shadow-md border border-border-subtle"></div>
+    </div>
 
     <!-- RÉSUMÉ -->
     <div class="ui-card flex flex-wrap justify-around text-center rounded-2xl">
@@ -495,7 +628,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 </script>
 
-{{-- GOOGLE MAPS --}}
+{{-- GOOGLE MAPS (MODE CARTE + PLACES + POSITION + TRAJETS) --}}
 <script>
 window.initMap = function () {
     const mapDiv = document.getElementById("map");
@@ -506,6 +639,56 @@ window.initMap = function () {
 
     const primary = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#F58220';
 
+    // UI refs
+    const whereName   = document.getElementById('whereName');
+    const whereCoords = document.getElementById('whereCoords');
+    const whereHint   = document.getElementById('whereHint');
+    const poiList     = document.getElementById('poiList');
+
+    const btnLocate   = document.getElementById('btnLocate');
+    const btnTraffic  = document.getElementById('btnTraffic');
+    const mapTypeBtns = Array.from(document.querySelectorAll('[data-maptype]'));
+
+    // services
+    const geocoder = new google.maps.Geocoder();
+    const trafficLayer = new google.maps.TrafficLayer();
+    let trafficOn = false;
+
+    function setWhere(lat, lng, title = null) {
+        if (whereCoords) whereCoords.textContent = `Lat ${Number(lat).toFixed(6)} • Lng ${Number(lng).toFixed(6)}`;
+        if (title && whereName) whereName.textContent = title;
+    }
+
+    function setPoiLoading(text="Recherche des lieux autour…") {
+        if (!poiList) return;
+        poiList.innerHTML = `<div class="muted" style="font-size:12px;">${text}</div>`;
+    }
+
+    function clearPoiMarkers() {
+        while (poiMarkers.length) poiMarkers.pop().setMap(null);
+    }
+
+    function distanceKm(from, toLatLng) {
+        try {
+            if (google.maps.geometry && google.maps.geometry.spherical) {
+                return google.maps.geometry.spherical.computeDistanceBetween(
+                    new google.maps.LatLng(from.lat, from.lng),
+                    toLatLng
+                ) / 1000;
+            }
+        } catch(e){}
+        return null;
+    }
+
+    function reverseGeocode(latLng) {
+        geocoder.geocode({ location: latLng }, (res, status) => {
+            if (status === 'OK' && res && res[0]) {
+                if (whereName) whereName.textContent = res[0].formatted_address;
+            }
+        });
+    }
+
+    // center default
     let center = { lat: 4.05, lng: 9.7 };
     for (const tr of tracks) {
         if (tr.points && tr.points.length) {
@@ -517,17 +700,218 @@ window.initMap = function () {
         }
     }
 
+    // ✅ POI visibles : pas de style qui cache "poi"
     const map = new google.maps.Map(mapDiv, {
         zoom: 13,
         center,
         mapTypeId: "roadmap",
-        styles: [{ featureType: "poi", stylers: [{ visibility: "off" }] }]
+        mapTypeControl: false,
+        fullscreenControl: true,
+        streetViewControl: true,
+        clickableIcons: true,
+        gestureHandling: "greedy"
     });
 
-    if (!tracks.length) return;
+    // Places
+    const places = new google.maps.places.PlacesService(map);
+    const poiMarkers = [];
+
+    function renderPoiList(items, origin) {
+        if (!poiList) return;
+        if (!items || !items.length) {
+            poiList.innerHTML = `<div class="muted" style="font-size:12px;">Aucun lieu trouvé à proximité.</div>`;
+            return;
+        }
+
+        poiList.innerHTML = items.map(p => {
+            const d = (p.__distKm != null) ? `${p.__distKm.toFixed(2)} km` : '—';
+            const open = (p.opening_hours && typeof p.opening_hours.open_now === 'boolean')
+                ? (p.opening_hours.open_now ? 'Ouvert' : 'Fermé')
+                : '—';
+            const rating = (p.rating != null) ? `${Number(p.rating).toFixed(1)}/5` : '—';
+
+            return `
+                <div class="poi-item">
+                    <b>${p.name || 'Lieu'}</b>
+                    <div class="poi-meta">
+                        <span><i class="fas fa-walking mr-1"></i>${d}</span>
+                        <span><i class="fas fa-star mr-1"></i>${rating}</span>
+                        <span><i class="fas fa-store mr-1"></i>${open}</span>
+                    </div>
+                    <div class="poi-meta">
+                        <span>${p.vicinity || ''}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // markers
+        clearPoiMarkers();
+        items.slice(0, 8).forEach(p => {
+            if (!p.geometry || !p.geometry.location) return;
+            const m = new google.maps.Marker({
+                map,
+                position: p.geometry.location,
+                title: p.name,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    fillColor: "#0ea5e9",
+                    fillOpacity: 1,
+                    strokeColor: "#ffffff",
+                    strokeWeight: 2,
+                    scale: 7
+                }
+            });
+            poiMarkers.push(m);
+        });
+    }
+
+    function searchNearby(originLatLng) {
+        const origin = { lat: originLatLng.lat(), lng: originLatLng.lng() };
+        setWhere(origin.lat, origin.lng, "Point sélectionné");
+        setPoiLoading();
+
+        const types = ['restaurant','gas_station','atm','hospital','pharmacy','police','store'];
+
+        const all = [];
+        let done = 0;
+
+        clearPoiMarkers();
+
+        types.forEach(tp => {
+            places.nearbySearch({ location: originLatLng, radius: 1200, type: tp }, (results, status) => {
+                done++;
+
+                if (status === google.maps.places.PlacesServiceStatus.OK && results && results.length) {
+                    results.forEach(r => all.push(r));
+                }
+
+                if (done === types.length) {
+                    // dédoublonnage
+                    const mapById = new Map();
+                    all.forEach(p => { if (p.place_id) mapById.set(p.place_id, p); });
+
+                    const unique = Array.from(mapById.values()).slice(0, 14);
+
+                    // distances
+                    unique.forEach(p => {
+                        if (p.geometry && p.geometry.location) {
+                            const d = distanceKm(origin, p.geometry.location);
+                            if (d != null) p.__distKm = d;
+                        }
+                    });
+
+                    unique.sort((a,b) => (a.__distKm ?? 999) - (b.__distKm ?? 999));
+                    renderPoiList(unique, origin);
+                }
+            });
+        });
+    }
+
+    // my position
+    let myMarker = null;
+    let myAccuracyCircle = null;
+
+    function locateMe() {
+        if (!navigator.geolocation) {
+            if (whereHint) whereHint.textContent = "Géolocalisation non supportée sur ce navigateur.";
+            return;
+        }
+
+        if (whereHint) whereHint.textContent = "Localisation en cours…";
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const acc = pos.coords.accuracy || 0;
+
+            const latLng = new google.maps.LatLng(lat, lng);
+            map.panTo(latLng);
+            if (map.getZoom() < 16) map.setZoom(16);
+
+            if (!myMarker) {
+                myMarker = new google.maps.Marker({
+                    map,
+                    position: latLng,
+                    title: "Ma position",
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: "#2563eb",
+                        fillOpacity: 1,
+                        strokeColor: "#ffffff",
+                        strokeWeight: 2,
+                        scale: 9
+                    }
+                });
+            } else {
+                myMarker.setPosition(latLng);
+            }
+
+            if (!myAccuracyCircle) {
+                myAccuracyCircle = new google.maps.Circle({
+                    map,
+                    center: latLng,
+                    radius: acc,
+                    strokeOpacity: 0.2,
+                    fillOpacity: 0.08
+                });
+            } else {
+                myAccuracyCircle.setCenter(latLng);
+                myAccuracyCircle.setRadius(acc);
+            }
+
+            setWhere(lat, lng, "Ma position");
+            reverseGeocode(latLng);
+            searchNearby(latLng);
+
+            if (whereHint) whereHint.textContent = "Tu peux aussi cliquer sur ton trajet pour explorer autour.";
+        }, () => {
+            if (whereHint) whereHint.textContent = "Impossible d’obtenir ta position (permission refusée ou GPS indispo).";
+        }, { enableHighAccuracy: true, timeout: 8000 });
+    }
+
+    // UI events
+    mapTypeBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            mapTypeBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            map.setMapTypeId(btn.getAttribute('data-maptype'));
+        });
+    });
+
+    if (btnTraffic) {
+        btnTraffic.addEventListener('click', () => {
+            trafficOn = !trafficOn;
+            if (trafficOn) {
+                trafficLayer.setMap(map);
+                btnTraffic.classList.add('active');
+            } else {
+                trafficLayer.setMap(null);
+                btnTraffic.classList.remove('active');
+            }
+        });
+    }
+
+    if (btnLocate) btnLocate.addEventListener('click', locateMe);
+
+    // -------- TRACKS DRAWING ----------
+    if (!tracks.length) {
+        if (whereHint) whereHint.textContent = "Aucun trajet à afficher.";
+        return;
+    }
 
     const bounds = new google.maps.LatLngBounds();
     const hoverInfo = new google.maps.InfoWindow();
+
+    function circleIcon(fill) {
+        return {
+            path: google.maps.SymbolPath.CIRCLE,
+            fillColor: fill,
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 2,
+            scale: 10
+        };
+    }
 
     function dist2(a, b) {
         const dx = a.lat - b.lat;
@@ -548,21 +932,10 @@ window.initMap = function () {
         return best;
     }
 
-    function circleIcon(fill) {
-        return {
-            path: google.maps.SymbolPath.CIRCLE,
-            fillColor: fill,
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-            scale: 10
-        };
-    }
-
     tracks.forEach((tr) => {
         const pts = tr.points || [];
-
         let path = [];
+
         if (pts.length >= 2) {
             path = pts.map(p => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }));
         } else if (tr.start && tr.end) {
@@ -570,30 +943,33 @@ window.initMap = function () {
                 { lat: parseFloat(tr.start.lat), lng: parseFloat(tr.start.lng) },
                 { lat: parseFloat(tr.end.lat),   lng: parseFloat(tr.end.lng) }
             ];
-        } else {
-            return;
-        }
+        } else return;
 
         path.forEach(p => bounds.extend(p));
 
         const isFocus = focusId && String(tr.trajet_id) === String(focusId);
 
-        // polyline visible
+        // polyline + flèches
         new google.maps.Polyline({
             path,
             strokeColor: primary,
-            strokeOpacity: isFocus ? 1 : 0.90,
+            strokeOpacity: isFocus ? 1 : 0.85,
             strokeWeight: isFocus ? 7 : 4,
-            clickable: false,
+            geodesic: true,
+            icons: [{
+                icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, strokeWeight: 2, scale: 2.6 },
+                offset: '0',
+                repeat: '90px'
+            }],
             map
         });
 
-        // hit zone invisible (survol fiable)
+        // zone cliquable large
         const hitLine = new google.maps.Polyline({
             path,
             strokeColor: primary,
             strokeOpacity: 0,
-            strokeWeight: 22,
+            strokeWeight: 24,
             clickable: true,
             map
         });
@@ -642,11 +1018,12 @@ window.initMap = function () {
                     <span>Lat: <b>${parseFloat(lat).toFixed(6)}</b></span><br>
                     <span>Lng: <b>${parseFloat(lng).toFixed(6)}</b></span><br>
                     ${spd !== null ? `<span>Vitesse: <b>${Number(spd).toFixed(1)} km/h</b></span>` : ``}
+                    <div style="margin-top:6px;font-size:12px;color:#6b7280;">Clique pour voir les lieux autour</div>
                 </div>
             `);
 
             const pos = closest
-                ? { lat: parseFloat(closest.lat), lng: parseFloat(closest.lng) }
+                ? new google.maps.LatLng(parseFloat(closest.lat), parseFloat(closest.lng))
                 : e.latLng;
 
             hoverInfo.setPosition(pos);
@@ -655,10 +1032,16 @@ window.initMap = function () {
 
         hitLine.addListener('mousemove', showHover);
         hitLine.addListener('mouseout', () => hoverInfo.close());
-        hitLine.addListener('click', showHover);
+
+        hitLine.addListener('click', (e) => {
+            showHover(e);
+            if (whereHint) whereHint.textContent = "Lieux autour du point sélectionné :";
+            reverseGeocode(e.latLng);
+            searchNearby(e.latLng);
+        });
     });
 
-    // ✅ si focus => fitBounds sur focus uniquement
+    // fit bounds focus vs global
     const focusTrack = (focusId)
         ? tracks.find(x => String(x.trajet_id) === String(focusId))
         : null;
@@ -666,8 +1049,8 @@ window.initMap = function () {
     if (focusTrack) {
         const pts = focusTrack.points || [];
         const focusBounds = new google.maps.LatLngBounds();
-
         let focusPath = [];
+
         if (pts.length >= 2) {
             focusPath = pts.map(p => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }));
         } else if (focusTrack.start && focusTrack.end) {
@@ -676,7 +1059,6 @@ window.initMap = function () {
                 { lat: parseFloat(focusTrack.end.lat),   lng: parseFloat(focusTrack.end.lng) }
             ];
         }
-
         focusPath.forEach(p => focusBounds.extend(p));
 
         if (!focusBounds.isEmpty()) {
@@ -693,6 +1075,14 @@ window.initMap = function () {
             });
         }
     }
+
+    // init overlay texts
+    const c = map.getCenter();
+    setWhere(c.lat(), c.lng(), "Centre de la carte");
+    if (whereHint) whereHint.textContent = "Clique sur un trajet ou utilise “Ma position” pour voir les restaurants autour.";
+
+    // Option auto-localisation au chargement :
+    // locateMe();
 }
 </script>
 @endsection
