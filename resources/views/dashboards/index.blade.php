@@ -40,27 +40,42 @@
         </div>
     </div>
 
-    {{-- Stats alertes par type (se met à jour si payload.stats.alertsByType OU payload.alerts_summary.by_type existe) --}}
-    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-        @php
-            $types = [
-                'stolen'       => ['Vol', 'fa-mask'],
-                'low_battery'  => ['Batterie Faible', 'fa-battery-quarter'],
-                'geofence'     => ['Geofence', 'fa-draw-polygon'],
-                'safe_zone'    => ['Safe Zone', 'fa-shield-alt'],
-                'speed'        => ['Vittesse', 'fa-tachometer-alt'],
-                'offline' => ['offline', 'fa-clock'],
-                'time_zone'    => ['Time Zone', 'fa-calendar-alt'],
-            ];
-        @endphp
+    {{-- ✅ CONFIG SIMPLE DES ALERTES (MODIFIABLE ICI) --}}
+    @php
+        /**
+         * Tu modifies ici:
+         * - label
+         * - icon
+         * - accent (couleur)
+         * - importance (badge)
+         */
+        $ALERT_TYPES = [
+            'stolen'       => ['label' => 'Vol',             'icon' => 'fa-mask',            'accent' => 'bg-red-100 text-red-700',     'badge' => 'bg-red-500'],
+            'low_battery'  => ['label' => 'Batterie Faible', 'icon' => 'fa-battery-quarter', 'accent' => 'bg-orange-100 text-orange-700','badge' => 'bg-orange-500'],
+            'geofence'     => ['label' => 'Geofence',        'icon' => 'fa-draw-polygon',    'accent' => 'bg-yellow-100 text-yellow-800','badge' => 'bg-yellow-500'],
+            'safe_zone'    => ['label' => 'Safe Zone',       'icon' => 'fa-shield-alt',      'accent' => 'bg-blue-100 text-blue-700',   'badge' => 'bg-blue-500'],
+            'speed'        => ['label' => 'Vitesse',         'icon' => 'fa-tachometer-alt',  'accent' => 'bg-purple-100 text-purple-700','badge' => 'bg-purple-500'],
+            'offline'      => ['label' => 'Offline',         'icon' => 'fa-clock',           'accent' => 'bg-gray-100 text-gray-700',   'badge' => 'bg-gray-500'],
+            'time_zone'    => ['label' => 'Time Zone',       'icon' => 'fa-calendar-alt',    'accent' => 'bg-indigo-100 text-indigo-700','badge' => 'bg-indigo-500'],
+        ];
+    @endphp
 
-        @foreach($types as $k => [$label, $icon])
-            <div class="ui-card p-3 flex items-center justify-between">
-                <div>
-                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">{{ $label }}</p>
+    {{-- Stats alertes par type (SSE) --}}
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        @foreach($ALERT_TYPES as $k => $meta)
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                {{-- bande couleur (importance) --}}
+                <span class="absolute left-0 top-0 h-full w-1 {{ $meta['badge'] }}"></span>
+
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">{{ $meta['label'] }}</p>
                     <p class="text-xl font-bold mt-1" id="stat-alert-{{ $k }}">0</p>
                 </div>
-                <div class="text-xl opacity-60"><i class="fas {{ $icon }}"></i></div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg {{ $meta['accent'] }}">
+                        <i class="fas {{ $meta['icon'] }}"></i>
+                    </span>
+                </div>
             </div>
         @endforeach
     </div>
@@ -141,9 +156,6 @@
         </div>
     </div>
 
-    {{-- Tableau alertes : on le traitera après (laisse le bloc vide pour l’instant si tu veux) --}}
-    {{-- <div class="ui-card"> ... </div> --}}
-
 </div>
 
 <script>
@@ -156,18 +168,25 @@ let dashboardSSE = null;
 // ✅ data initiale (peut être vide)
 let vehiclesData = @json($vehicles ?? []);
 
+// ✅ URL template "Voir les trajets"
+const TRAJETS_URL_TEMPLATE = "{{ route('trajets.index', ['vehicle_id' => '__ID__']) }}";
+function trajetsUrl(id) {
+    return TRAJETS_URL_TEMPLATE.replace('__ID__', encodeURIComponent(String(id)));
+}
+
+// ✅ config alertes (si tu veux aussi piloter côté JS, tout est centralisé)
+const ALERT_META = @json($ALERT_TYPES);
+
 function initFleetMap() {
     map = new google.maps.Map(document.getElementById('fleetMap'), {
         center: { lat: 4.0511, lng: 9.7679 },
         zoom: 7
     });
 
-    // ✅ afficher tout de suite
     renderVehicleList(vehiclesData);
     renderMarkers(vehiclesData, true);
     initVehicleSearch();
 
-    // ✅ SSE
     startDashboardSSE();
 }
 
@@ -190,27 +209,25 @@ function startDashboardSSE() {
             if (lu) lu.textContent = `Maj: ${payload.ts}`;
         }
 
-        // ✅ 1) STATS GLOBAL (instantané si ton backend “bumpVersion” au bon moment)
+        // 1) STATS GLOBAL
         if (payload.stats) {
             applyStats(payload.stats);
 
-            // priorité 1: si le backend envoie alertsByType dans stats
             const byTypeFromStats = payload.stats.alertsByType || payload.stats.alerts_by_type || null;
             if (byTypeFromStats) applyAlertTypeStats(byTypeFromStats);
         }
 
-        // ✅ 2) ALERT SUMMARY (recommandé): payload.alerts_summary.by_type
+        // 2) ALERT SUMMARY (recommandé)
         if (payload.alerts_summary && payload.alerts_summary.by_type) {
             applyAlertTypeStats(payload.alerts_summary.by_type);
 
-            // total non traitées
             if (typeof payload.alerts_summary.total !== 'undefined') {
                 const el = document.getElementById('stat-alerts');
                 if (el) el.textContent = String(payload.alerts_summary.total);
             }
         }
 
-        // ✅ 3) FLEET (liste + map)
+        // 3) FLEET (liste + map)
         const fleet = Array.isArray(payload.fleet) ? payload.fleet : [];
         vehiclesData = fleet;
 
@@ -261,16 +278,14 @@ function applyStats(stats) {
     set('stat-vehicles', stats.vehiclesCount);
     set('stat-associations', stats.associationsCount);
 
-    // si backend le fournit
     if (stats.alertsCount !== undefined && stats.alertsCount !== null) {
         set('stat-alerts', stats.alertsCount);
     }
 }
 
 function applyAlertTypeStats(obj) {
-    // obj = { stolen: 3, low_battery: 1, ... }
-    const keys = ['stolen','low_battery','geofence','safe_zone','speed','engine','unauthorized','time_zone'];
-    keys.forEach(k => {
+    // ✅ IMPORTANT: on parcourt la config pour inclure offline et tout nouveau type
+    Object.keys(ALERT_META || {}).forEach(k => {
         const el = document.getElementById('stat-alert-' + k);
         if (!el) return;
         el.textContent = (obj && obj[k] !== undefined && obj[k] !== null) ? String(obj[k]) : '0';
@@ -291,7 +306,7 @@ function renderVehicleList(fleet) {
 
     list.innerHTML = fleet.map(v => buildVehicleItemHtml(v)).join('');
 
-    // bind click
+    // bind click (focus map)
     list.querySelectorAll('.vehicle-item').forEach(item => {
         item.addEventListener('click', function () {
             const id = parseInt(this.dataset.id, 10);
@@ -320,6 +335,7 @@ function buildVehicleItemHtml(v) {
     const immat = escapeHtml(v.immatriculation ?? '—');
     const brand = escapeHtml(`${v.marque ?? ''} ${v.model ?? ''}`.trim());
     const usersTxt = escapeHtml(v.users ? v.users : 'Aucun utilisateur associé');
+
     const profile = v.user_profile_url
         ? `<a href="${v.user_profile_url}"
               class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 p-2"
@@ -331,6 +347,16 @@ function buildVehicleItemHtml(v) {
                   onclick="event.stopPropagation();"><i class="fas fa-eye-slash"></i></button>`;
 
     const label = `${(v.immatriculation ?? '')} ${(v.users ?? '')}`.toLowerCase();
+
+    // ✅ lien trajets
+    const trajets = `
+        <a href="${trajetsUrl(id)}"
+           class="inline-flex items-center gap-1 text-[10px] text-secondary hover:text-primary"
+           onclick="event.stopPropagation();"
+           title="Voir les trajets">
+            <i class="fas fa-route text-[10px] text-primary"></i> Voir les trajets
+        </a>
+    `;
 
     return `
         <div class="vehicle-item border rounded-lg px-3 py-2.5 cursor-pointer transition-all duration-150
@@ -372,9 +398,7 @@ function buildVehicleItemHtml(v) {
                     </span>
                 </span>
 
-                <span class="inline-flex items-center gap-1 text-[10px] text-secondary">
-                    <i class="fas fa-location-arrow text-[10px] text-primary"></i> Voir sur carte
-                </span>
+                ${trajets}
             </div>
         </div>
     `;
@@ -517,10 +541,19 @@ function buildInfoWindowContent(vehicle) {
            </div>`
         : '';
 
+    const trajetsLink = `
+        <div style="margin-top:6px;">
+            <a href="${trajetsUrl(vehicle.id)}" style="color:#F58220;text-decoration:underline;">
+                Voir les trajets
+            </a>
+        </div>
+    `;
+
     return `
         <div style="font-size:12px;min-width:220px;">
             <b>${escapeHtml(vehicle.immatriculation)}</b><br>
             Utilisateur(s): ${escapeHtml(users)}<br>
+
             <div style="margin-top:6px;">
                 <span style="display:inline-flex;align-items:center;margin-right:10px;">
                     <i class="fas fa-power-off" style="margin-right:4px;color:${engineColor};"></i>
@@ -531,6 +564,8 @@ function buildInfoWindowContent(vehicle) {
                     <span style="color:${gpsColor};font-weight:600;">${gpsLabel}</span>
                 </span>
             </div>
+
+            ${trajetsLink}
             ${profileLink}
         </div>
     `;

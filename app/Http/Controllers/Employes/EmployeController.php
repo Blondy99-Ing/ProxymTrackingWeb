@@ -20,6 +20,11 @@ class EmployeController extends Controller
     {
         $this->media = $media;
     }
+//gestion des roles sur les actions sensibles
+    private function ensureAdmin(): void
+{
+    abort_unless(auth('web')->user()?->isAdmin(), 403);
+}
 
     /**
      * Liste employés + rôles autorisés (admin, call_center)
@@ -40,6 +45,8 @@ class EmployeController extends Controller
      */
     public function store(Request $request)
     {
+        $this->ensureAdmin();
+
         $request->validate([
             'nom'      => ['required', 'string', 'max:255'],
             'prenom'   => ['required', 'string', 'max:255'],
@@ -82,6 +89,9 @@ class EmployeController extends Controller
      */
     public function update(Request $request, Employe $employe)
     {
+        $this->ensureAdmin();
+
+
         $request->validate([
             'nom'      => ['required', 'string', 'max:255'],
             'prenom'   => ['required', 'string', 'max:255'],
@@ -127,6 +137,7 @@ class EmployeController extends Controller
      */
     public function destroy(Employe $employe)
     {
+        $this->ensureAdmin();
         // ✅ supprimer la photo avant delete
         $this->media->delete($employe->photo);
 

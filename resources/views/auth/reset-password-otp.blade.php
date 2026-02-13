@@ -84,7 +84,7 @@
         @endif
 
         <!-- Form -->
-        <form method="POST" action="{{  route('otp.password.store')  }}">
+        <form method="POST" action="{{ route('otp.password.store') }}">
             @csrf
 
             <input type="hidden" name="token" value="{{ $token }}">

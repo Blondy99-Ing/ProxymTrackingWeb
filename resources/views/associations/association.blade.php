@@ -5,7 +5,7 @@
 @section('content')
 <div class="p-4 md:p-8 space-y-8">
 
- 
+
     <div class="flex justify-end">
         <div>
             <button type="button" class="btn-primary" id="openAssociationModalBtn">
@@ -18,8 +18,9 @@
     <div id="associationModal"
         class="fixed inset-0 bg-black bg-opacity-75 hidden flex justify-center items-center z-[9999] transition-opacity duration-300">
 
-        <div class="bg-card rounded-2xl w-full max-w-4xl p-6 relative shadow-lg transform transition-transform duration-300 scale-95 opacity-0 ui-card">
-            
+        <div
+            class="bg-card rounded-2xl w-full max-w-4xl p-6 relative shadow-lg transform transition-transform duration-300 scale-95 opacity-0 ui-card">
+
             <h2 class="text-xl font-bold font-orbitron mb-6" style="color: var(--color-text);">
                 Associer un utilisateur à un ou plusieurs véhicules
             </h2>
@@ -36,72 +37,78 @@
                 <input type="hidden" name="mode" id="associationMode" value="create">
 
                 <div class="flex flex-col md:flex-row gap-6">
-                    
+
                     {{-- Liste Utilisateurs --}}
-                    <div class="flex-1 bg-background p-4 rounded-xl shadow-inner border border-border-subtle dark:border-border-subtle/50">
+                    <div
+                        class="flex-1 bg-background p-4 rounded-xl shadow-inner border border-border-subtle dark:border-border-subtle/50">
                         <label class="block font-medium text-secondary mb-3">Sélectionner l'Utilisateur</label>
                         <input type="text" placeholder="Rechercher utilisateur..." id="searchUser"
                             class="ui-input-style mb-3">
 
                         <div id="userList" class="space-y-2 max-h-64 overflow-y-auto ui-scroll-style">
                             @foreach($users as $user)
-                                <label
-                                    class="flex items-center gap-3 p-2 hover:bg-hover-subtle rounded cursor-pointer transition-colors user-item">
-                                    <input type="radio" name="user_unique_id" value="{{ $user->user_unique_id }}"
-                                        class="form-radio checked:text-primary focus:ring-primary" required>
-                                    
-                                    @if(isset($user->photo) && $user->photo)
-                                        <img src="{{ asset('storage/' . $user->photo) }}" alt="{{ $user->prenom }}"
-                                            class="h-8 w-8 object-cover rounded-full border border-border-subtle">
-                                    @else
-                                        <div class="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center border border-border-subtle text-primary text-sm font-semibold">
-                                            U
-                                        </div>
-                                    @endif
-                                    
-                                    <span style="color: var(--color-text);">
-                                        {{ $user->nom }} {{ $user->prenom }} 
-                                        <span class="text-secondary text-sm font-light"></span>
-                                    </span>
-                                </label>
+                            <label
+                                class="flex items-center gap-3 p-2 hover:bg-hover-subtle rounded cursor-pointer transition-colors user-item">
+                                <input type="radio" name="user_unique_id" value="{{ $user->user_unique_id }}"
+                                    class="form-radio checked:text-primary focus:ring-primary" required>
+
+                                @if(isset($user->photo) && $user->photo)
+                                <img src="{{ asset('storage/' . $user->photo) }}" alt="{{ $user->prenom }}"
+                                    class="h-8 w-8 object-cover rounded-full border border-border-subtle">
+                                @else
+                                <div
+                                    class="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center border border-border-subtle text-primary text-sm font-semibold">
+                                    U
+                                </div>
+                                @endif
+
+                                <span style="color: var(--color-text);">
+                                    {{ $user->nom }} {{ $user->prenom }}
+                                    <span class="text-secondary text-sm font-light"></span>
+                                </span>
+                            </label>
                             @endforeach
                         </div>
                     </div>
 
                     {{-- Liste Véhicules --}}
-                    <div class="flex-1 bg-background p-4 rounded-xl shadow-inner border border-border-subtle dark:border-border-subtle/50">
+                    <div
+                        class="flex-1 bg-background p-4 rounded-xl shadow-inner border border-border-subtle dark:border-border-subtle/50">
                         <label class="block font-medium text-secondary mb-3">Sélectionner les Véhicules</label>
                         <input type="text" placeholder="Rechercher véhicule..." id="searchVehicle"
                             class="ui-input-style mb-3">
 
                         <div id="vehicleList" class="space-y-2 max-h-64 overflow-y-auto ui-scroll-style">
                             @foreach($voitures as $voiture)
-                                <label
-                                    class="flex items-center gap-3 p-2 hover:bg-hover-subtle rounded cursor-pointer transition-colors vehicle-item">
-                                    <input type="checkbox" name="voiture_unique_id[]"
-                                        value="{{ $voiture->voiture_unique_id }}" class="form-checkbox checked:bg-primary focus:ring-primary">
-                                    
-                                    @if(isset($voiture->photo) && $voiture->photo)
-                                        <img src="{{ asset('storage/' . $voiture->photo) }}"
-                                            alt="{{ $voiture->immatriculation }}"
-                                            class="h-8 w-8 object-cover rounded border border-border-subtle">
-                                    @else
-                                        <div class="h-8 w-8 rounded bg-primary/20 flex items-center justify-center border border-border-subtle text-primary text-sm font-semibold">
-                                            V
-                                        </div>
-                                    @endif
-                                    
-                                    <span style="color: var(--color-text);">
-                                        {{ $voiture->immatriculation }} - {{ $voiture->marque }} 
-                                        <span class="text-secondary text-sm font-light"></span>
-                                    </span>
-                                </label>
+                            <label
+                                class="flex items-center gap-3 p-2 hover:bg-hover-subtle rounded cursor-pointer transition-colors vehicle-item">
+                                <input type="checkbox" name="voiture_unique_id[]"
+                                    value="{{ $voiture->voiture_unique_id }}"
+                                    class="form-checkbox checked:bg-primary focus:ring-primary">
+
+                                @if(isset($voiture->photo) && $voiture->photo)
+                                <img src="{{ asset('storage/' . $voiture->photo) }}"
+                                    alt="{{ $voiture->immatriculation }}"
+                                    class="h-8 w-8 object-cover rounded border border-border-subtle">
+                                @else
+                                <div
+                                    class="h-8 w-8 rounded bg-primary/20 flex items-center justify-center border border-border-subtle text-primary text-sm font-semibold">
+                                    V
+                                </div>
+                                @endif
+
+                                <span style="color: var(--color-text);">
+                                    {{ $voiture->immatriculation }} - {{ $voiture->marque }}
+                                    <span class="text-secondary text-sm font-light"></span>
+                                </span>
+                            </label>
                             @endforeach
                         </div>
                     </div>
                 </div>
 
-                <div class="flex justify-end mt-6 space-x-3 pt-4 border-t border-border-subtle dark:border-border-subtle/50">
+                <div
+                    class="flex justify-end mt-6 space-x-3 pt-4 border-t border-border-subtle dark:border-border-subtle/50">
                     <button type="button" class="btn-secondary" id="cancelAssociationBtn">Annuler</button>
                     <button type="submit" class="btn-primary">
                         <i class="fas fa-link mr-2"></i> Associer
@@ -132,50 +139,57 @@
                 </thead>
                 <tbody>
                     @foreach($associations as $assoc)
-                        <tr class="hover:bg-hover-subtle transition-colors">
-                            <td class="text-secondary">
-                                {{ $assoc->utilisateur->first()->user_unique_id ?? 'N/A' }}
-                            </td>
-                            <td style="color: var(--color-text);">
-                                {{ $assoc->utilisateur->first()->nom ?? 'N/A' }}
-                                {{ $assoc->utilisateur->first()->prenom ?? 'N/A' }}
-                            </td>
-                            <td class="text-secondary">{{ $assoc->voiture_unique_id }}</td>
-                            <td style="color: var(--color-text);">{{ $assoc->immatriculation }}</td>
-                            <td>{{ $assoc->marque }}</td>
-                            <td class="text-secondary">
-                                {{ optional($assoc->created_at)->format('d/m/Y H:i') ?? 'Non défini' }}
-                            </td>
-                            <td class="whitespace-nowrap space-x-1">
-                                {{-- Voir --}}
-                                <a href="{{ route('users.profile', ['id' => $assoc->utilisateur->first()->id ?? null]) }}"
-                                   class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 p-2"
-                                   title="Voir les détails">
-                                    <i class="fas fa-eye"></i>
-                                </a>
+                    <tr class="hover:bg-hover-subtle transition-colors">
+                        <td class="text-secondary">
+                            {{ $assoc->utilisateur->first()->user_unique_id ?? 'N/A' }}
+                        </td>
+                        <td style="color: var(--color-text);">
+                            {{ $assoc->utilisateur->first()->nom ?? 'N/A' }}
+                            {{ $assoc->utilisateur->first()->prenom ?? 'N/A' }}
+                        </td>
+                        <td class="text-secondary">{{ $assoc->voiture_unique_id }}</td>
+                        <td style="color: var(--color-text);">{{ $assoc->immatriculation }}</td>
+                        <td>{{ $assoc->marque }}</td>
+                        <td class="text-secondary">
+                            {{ optional($assoc->created_at)->format('d/m/Y H:i') ?? 'Non défini' }}
+                        </td>
+                        <td class="whitespace-nowrap space-x-1">
+                            @php
+                            $isAdmin = auth('web')->user()?->isAdmin();
+                            @endphp
 
-                                {{-- Modifier : ouvre la modale en mode EDIT --}}
-                                <a href="#"
-                                   class="text-yellow-500 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-200 p-2 edit-association-btn"
-                                   title="Modifier l'association"
-                                   data-user-unique-id="{{ $assoc->utilisateur->first()->user_unique_id ?? '' }}"
-                                   data-voiture-unique-id="{{ $assoc->voiture_unique_id }}">
-                                    <i class="fas fa-edit"></i>
-                                </a>
+                            {{-- Voir --}}
+                            <a href="{{ route('users.profile', ['id' => $assoc->utilisateur->first()->id ?? null]) }}"
+                                class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 p-2"
+                                title="Voir les détails">
+                                <i class="fas fa-eye"></i>
+                            </a>
 
-                                {{-- Supprimer (Dissocier) --}}
-                                <form action="{{ route('association.destroy', $assoc->id) }}" method="POST" class="inline"
-                                    onsubmit="return confirm('Voulez-vous vraiment dissocier cet élément ?');">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit"
-                                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 p-2"
-                                            title="Dissocier">
-                                        <i class="fas fa-trash-alt"></i>
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>
+                            @if($isAdmin)
+                            {{-- Modifier --}}
+                            <a href="#"
+                                class="text-yellow-500 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-200 p-2 edit-association-btn"
+                                title="Modifier l'association"
+                                data-user-unique-id="{{ $assoc->utilisateur->first()->user_unique_id ?? '' }}"
+                                data-voiture-unique-id="{{ $assoc->voiture_unique_id }}">
+                                <i class="fas fa-edit"></i>
+                            </a>
+
+                            {{-- Supprimer --}}
+                            <form action="{{ route('association.destroy', $assoc->id) }}" method="POST" class="inline"
+                                onsubmit="return confirm('Voulez-vous vraiment dissocier cet élément ?');">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit"
+                                    class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200 p-2"
+                                    title="Dissocier">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </form>
+                            @endif
+
+                        </td>
+                    </tr>
                     @endforeach
                 </tbody>
             </table>
@@ -186,99 +200,101 @@
 
 @push('scripts')
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // --- DataTables ---
-        if ($.fn.DataTable) {
-            $('#associationTable').DataTable({
-                "language": { "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/fr-FR.json" }
-            });
-        }
+document.addEventListener('DOMContentLoaded', function() {
+    // --- DataTables ---
+    if ($.fn.DataTable) {
+        $('#associationTable').DataTable({
+            "language": {
+                "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/fr-FR.json"
+            }
+        });
+    }
 
-        // --- Modale & formulaire ---
-        const modal = document.getElementById('associationModal');
-        const modalContent = modal.firstElementChild;
-        const openBtn = document.getElementById('openAssociationModalBtn');
-        const closeBtn = document.getElementById('closeAssociationModalBtn');
-        const cancelBtn = document.getElementById('cancelAssociationBtn');
-        const associationForm = document.getElementById('associationForm');
-        const modeInput = document.getElementById('associationMode');
+    // --- Modale & formulaire ---
+    const modal = document.getElementById('associationModal');
+    const modalContent = modal.firstElementChild;
+    const openBtn = document.getElementById('openAssociationModalBtn');
+    const closeBtn = document.getElementById('closeAssociationModalBtn');
+    const cancelBtn = document.getElementById('cancelAssociationBtn');
+    const associationForm = document.getElementById('associationForm');
+    const modeInput = document.getElementById('associationMode');
 
-        const userList = document.getElementById('userList');
-        const vehicleList = document.getElementById('vehicleList');
+    const userList = document.getElementById('userList');
+    const vehicleList = document.getElementById('vehicleList');
 
-        function openModal() {
-            modal.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-            setTimeout(() => modalContent.classList.remove('scale-95', 'opacity-0'), 10);
-        }
+    function openModal() {
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        setTimeout(() => modalContent.classList.remove('scale-95', 'opacity-0'), 10);
+    }
 
-        function closeModal() {
-            modalContent.classList.add('scale-95', 'opacity-0');
-            document.body.style.overflow = '';
-            setTimeout(() => {
-                modal.classList.add('hidden');
-                associationForm.reset();
-                modeInput.value = 'create'; // retour au mode création par défaut
-            }, 200);
-        }
-
-        // Ouvrir en mode CREATE
-        openBtn.addEventListener('click', () => {
+    function closeModal() {
+        modalContent.classList.add('scale-95', 'opacity-0');
+        document.body.style.overflow = '';
+        setTimeout(() => {
+            modal.classList.add('hidden');
             associationForm.reset();
-            modeInput.value = 'create';
+            modeInput.value = 'create'; // retour au mode création par défaut
+        }, 200);
+    }
+
+    // Ouvrir en mode CREATE
+    openBtn.addEventListener('click', () => {
+        associationForm.reset();
+        modeInput.value = 'create';
+        openModal();
+    });
+
+    // Fermer modale
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', e => {
+        if (e.target === modal) closeModal();
+    });
+
+    // Ouvrir en mode EDIT depuis le tableau
+    document.querySelectorAll('.edit-association-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            const userUniqueId = this.dataset.userUniqueId;
+            const voitureUniqueId = this.dataset.voitureUniqueId;
+
+            modeInput.value = 'edit';
+
+            // Sélectionner l'utilisateur
+            userList.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.checked = (radio.value === userUniqueId);
+            });
+
+            // Sélectionner le véhicule (unique) pour cette association
+            vehicleList.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = (checkbox.value === voitureUniqueId);
+            });
+
             openModal();
         });
-
-        // Fermer modale
-        closeBtn.addEventListener('click', closeModal);
-        cancelBtn.addEventListener('click', closeModal);
-        modal.addEventListener('click', e => {
-            if (e.target === modal) closeModal();
-        });
-
-        // Ouvrir en mode EDIT depuis le tableau
-        document.querySelectorAll('.edit-association-btn').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-
-                const userUniqueId = this.dataset.userUniqueId;
-                const voitureUniqueId = this.dataset.voitureUniqueId;
-
-                modeInput.value = 'edit';
-
-                // Sélectionner l'utilisateur
-                userList.querySelectorAll('input[type="radio"]').forEach(radio => {
-                    radio.checked = (radio.value === userUniqueId);
-                });
-
-                // Sélectionner le véhicule (unique) pour cette association
-                vehicleList.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-                    checkbox.checked = (checkbox.value === voitureUniqueId);
-                });
-
-                openModal();
-            });
-        });
-
-        // --- Fonction de filtre pour les listes ---
-        function filterList(inputId, listId) {
-            const input = document.getElementById(inputId);
-            const list = document.getElementById(listId);
-            if (!input || !list) return;
-
-            input.addEventListener('input', () => {
-                const filter = input.value.toLowerCase();
-                list.querySelectorAll('label').forEach(label => {
-                    const text = label.textContent.toLowerCase();
-                    label.style.display = text.includes(filter) ? 'flex' : 'none';
-                });
-            });
-        }
-
-        // Application des filtres
-        filterList('searchUser', 'userList');
-        filterList('searchVehicle', 'vehicleList');
     });
+
+    // --- Fonction de filtre pour les listes ---
+    function filterList(inputId, listId) {
+        const input = document.getElementById(inputId);
+        const list = document.getElementById(listId);
+        if (!input || !list) return;
+
+        input.addEventListener('input', () => {
+            const filter = input.value.toLowerCase();
+            list.querySelectorAll('label').forEach(label => {
+                const text = label.textContent.toLowerCase();
+                label.style.display = text.includes(filter) ? 'flex' : 'none';
+            });
+        });
+    }
+
+    // Application des filtres
+    filterList('searchUser', 'userList');
+    filterList('searchVehicle', 'vehicleList');
+});
 </script>
 @endpush
 

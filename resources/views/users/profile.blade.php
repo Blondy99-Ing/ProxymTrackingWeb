@@ -64,9 +64,16 @@
                 </h2>
                 <p class="text-secondary">{{ $user->role?->name ?? 'Utilisateur' }}</p>
 
+        @php
+            $authUser = auth('web')->user();
+            $isAdmin = ($authUser?->isAdmin() ?? false);
+        @endphp
+        @if($isAdmin)
                 <button type="button" id="openProfileEditModalBtn" class="btn-secondary mt-4 py-2 px-4 text-sm font-normal">
                     <i class="fas fa-edit mr-2"></i> Mettre à jour les informations
                 </button>
+
+             @endif
             </div>
 
             {{-- Détails du compte --}}

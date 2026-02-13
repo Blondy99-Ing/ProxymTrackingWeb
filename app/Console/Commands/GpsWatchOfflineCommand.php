@@ -8,6 +8,7 @@ use App\Services\GpsControlService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http; // ✅ NEW
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -21,6 +22,9 @@ class GpsWatchOfflineCommand extends Command
         {--debug=1 : 1=logs debug, 0=silence}';
 
     protected $description = 'Met à jour gps_device_status / gps_offline_historique et crée les alertes offline';
+
+    // ✅ NEW: on déclenche le webhook Laravel "what=alerts" uniquement si une alerte OFFLINE a réellement été créée
+    private bool $dashboardAlertsDirty = false;
 
     public function handle(GpsControlService $gps): int
     {
@@ -279,6 +283,11 @@ class GpsWatchOfflineCommand extends Command
         $this->info('✅ gps:watch-offline terminé');
         $this->line(json_encode($summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
+        // ✅ NEW: déclenche webhook Laravel (what=alerts) une seule fois si une alerte OFFLINE a été réellement créée
+        if ($this->dashboardAlertsDirty) {
+            $this->notifyDashboard('alerts');
+        }
+
         return self::SUCCESS;
     }
 
@@ -378,6 +387,43 @@ class GpsWatchOfflineCommand extends Command
             'account' => $account,
             'reason' => $reason,
         ]);
+    }
+
+    // ✅ NEW: appelle le webhook Laravel qui invalide/rebuild Redis + SSE
+    private function notifyDashboard(string $what): bool
+    {
+        $url = (string) env('DASH_WEBHOOK_URL', '');
+        $secret = (string) config('services.dashboard_webhook_secret', '');
+
+        if ($url === '' || $secret === '') {
+            $this->dbg('[DASH_WEBHOOK] missing url/secret', compact('what', 'url'));
+            return false;
+        }
+
+        try {
+            $res = Http::timeout(10)
+                ->withHeaders(['X-DASH-SECRET' => $secret])
+                ->acceptJson()
+                ->post($url, ['what' => $what]);
+
+            $ok = $res->successful() && (bool) data_get($res->json(), 'ok', false);
+
+            $this->dbg('[DASH_WEBHOOK] called', [
+                'what' => $what,
+                'status' => $res->status(),
+                'ok' => $ok,
+                'body' => $res->json(),
+            ]);
+
+            return $ok;
+        } catch (\Throwable $e) {
+            $this->err('[DASH_WEBHOOK] failed', [
+                'what' => $what,
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
     }
 
     private function openOfflineEventIfNotExists(
@@ -514,7 +560,7 @@ class GpsWatchOfflineCommand extends Command
         $msgParts[] = "Seuil: {$thresholdMin}min";
         if ($durationText) $msgParts[] = "Durée offline: {$durationText}";
 
-        $message = implode(' | ', $msgParts);
+        $message = implode(' , ', $msgParts);
 
         // anti-doublon : ±2 minutes autour started_at
         $from = $startedAt->copy()->subMinutes(2);
@@ -545,6 +591,9 @@ class GpsWatchOfflineCommand extends Command
                 'read' => false,
                 'processed' => false,
             ]);
+
+            // ✅ NEW: on marque "dirty" uniquement quand on a réellement créé une alerte
+            $this->dashboardAlertsDirty = true;
 
             $this->dbg('[OFFLINE_ALERT] created', [
                 'voiture_id' => $voitureId,

@@ -1,168 +1,174 @@
+{{-- resources/views/trajets/byVoiture.blade.php --}}
 @extends('layouts.app')
 
 @section('title', 'Trajets sur carte')
 
 @push('head')
-<script
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo&callback=initMap&libraries=places,geometry"
-    async defer>
+<style>
+  #map {
+      width: 100%;
+      height: calc(100vh - 230px);
+      min-height: 560px;
+      border-radius: 14px;
+  }
+
+  .chip {
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 12px; border-radius:999px;
+      border:1px solid var(--color-border-subtle);
+      background: var(--color-card);
+      color: var(--color-text);
+      font-size: 12px;
+      white-space: nowrap;
+  }
+
+  .trip-row-focus {
+      outline: 2px solid rgba(245,130,32,.35);
+      background: rgba(245,130,32,.06);
+  }
+
+  .map-shell{ position: relative; }
+
+  /* only 2 buttons visible */
+  .map-top-actions{
+      position:absolute;
+      top:14px; right:14px;
+      z-index: 12;
+      display:flex; gap:10px;
+      flex-wrap:wrap;
+  }
+
+  .floating-btn{
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.22);
+      color: #fff;
+      backdrop-filter: blur(6px);
+      cursor:pointer;
+      transition:.15s;
+      user-select:none;
+      font-size: 13px;
+      box-shadow: 0 10px 24px rgba(0,0,0,.18);
+  }
+  .floating-btn:hover{ transform: translateY(-1px); border-color: rgba(245,130,32,.9); }
+  .floating-btn.active{ border-color: rgba(245,130,32,.95); background: rgba(245,130,32,.22); }
+
+  .floating-panel{
+      position:absolute;
+      top:64px; right:14px;
+      z-index: 12;
+      width: min(360px, calc(100% - 28px));
+      display:none;
+  }
+
+  .panel-card{
+      border-radius: 16px;
+      background: rgba(0,0,0,.28);
+      color:#fff;
+      border: 1px solid rgba(255,255,255,.14);
+      backdrop-filter: blur(10px);
+      padding: 12px;
+      box-shadow: 0 16px 40px rgba(0,0,0,.22);
+  }
+
+  .panel-title{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px; margin-bottom: 10px;
+      font-weight: 800;
+  }
+
+  .mini-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  .mini-btn{
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color:#fff;
+      cursor:pointer;
+      font-size: 12px;
+      transition:.15s;
+      user-select:none;
+  }
+  .mini-btn:hover{ transform: translateY(-1px); border-color: rgba(245,130,32,.9); }
+  .mini-btn.active{ border-color: rgba(245,130,32,.95); background: rgba(245,130,32,.18); }
+
+  .speed-pill{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      font-weight:800;
+      min-width: 60px;
+  }
+
+  .progress{
+      width:100%;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.12);
+      overflow:hidden;
+      margin-top: 10px;
+  }
+  .progress > div{
+      height:100%;
+      width: 0%;
+      background: rgba(245,130,32,.85);
+      transition: width .08s linear;
+  }
+
+  .small-grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+      margin-top: 10px;
+  }
+
+  .muted{ opacity:.78; font-size: 12px; }
+</style>
+
+{{-- ✅ Bootstrap solide : callback Google -> marque prêt -> lance bootMap si DOM prêt --}}
+<script>
+  window.__gm_ready = false;
+  window.__dom_ready = false;
+  window.__startMap = null;
+
+  window.initMap = function () {
+    window.__gm_ready = true;
+    try {
+      if (typeof window.__startMap === 'function' && window.__dom_ready) {
+        window.__startMap();
+      }
+    } catch (e) {
+      console.error('[Trajets] initMap crash:', e);
+    }
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    window.__dom_ready = true;
+    try {
+      if (typeof window.__startMap === 'function' && window.__gm_ready) {
+        window.__startMap();
+      }
+    } catch (e) {
+      console.error('[Trajets] DOMContentLoaded crash:', e);
+    }
+  });
 </script>
 
-<style>
-    #map {
-        width: 100%;
-        height: calc(100vh - 320px);
-        min-height: 520px;
-        border-radius: 14px;
-    }
-
-    .filter-bar {
-        width: 100%;
-        padding: 14px;
-        border-radius: 14px;
-        background: var(--color-card);
-        border: 1px solid var(--color-border-subtle);
-        box-shadow: none;
-    }
-
-    .back-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 14px;
-        border-radius: 12px;
-        border: 1px solid var(--color-border-subtle);
-        background: var(--color-card);
-        color: var(--color-text);
-        transition: .2s;
-    }
-    .back-btn:hover {
-        transform: translateY(-1px);
-        border-color: var(--color-primary);
-        color: var(--color-primary);
-    }
-
-    .chip {
-        display:inline-flex;
-        align-items:center;
-        gap:8px;
-        padding:8px 12px;
-        border-radius:999px;
-        border:1px solid var(--color-border-subtle);
-        background: var(--color-card);
-        color: var(--color-text);
-        font-size: 12px;
-        white-space: nowrap;
-    }
-
-    .trip-row-focus {
-        outline: 2px solid rgba(245,130,32,.35);
-        background: rgba(245,130,32,.06);
-    }
-
-    /* ---- MAP MODE CARTE ---- */
-    .map-shell{ position: relative; }
-
-    .map-overlay{
-        position:absolute;
-        top:14px;
-        left:14px;
-        z-index: 10;
-        width: min(420px, calc(100% - 28px));
-    }
-
-    .overlay-card{
-        border-radius:16px;
-        background: var(--color-card);
-        border: 1px solid var(--color-border-subtle);
-        padding: 12px;
-        box-shadow: 0 12px 30px rgba(0,0,0,.12);
-    }
-
-    .overlay-title{
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:10px;
-        margin-bottom: 8px;
-    }
-
-    .overlay-actions{
-        display:flex;
-        gap:8px;
-        flex-wrap: wrap;
-    }
-
-    .map-mini-btn{
-        display:inline-flex;
-        align-items:center;
-        gap:8px;
-        padding: 8px 10px;
-        border-radius: 12px;
-        border: 1px solid var(--color-border-subtle);
-        background: transparent;
-        color: var(--color-text);
-        cursor:pointer;
-        font-size: 12px;
-        transition:.15s;
-        user-select:none;
-    }
-    .map-mini-btn:hover{
-        transform: translateY(-1px);
-        border-color: var(--color-primary);
-        color: var(--color-primary);
-    }
-    .map-mini-btn.active{
-        border-color: var(--color-primary);
-        color: var(--color-primary);
-        background: rgba(245,130,32,.08);
-    }
-
-    .kv{
-        font-size: 12px;
-        color: var(--color-text);
-        line-height: 1.35;
-        margin-top: 8px;
-    }
-    .kv .muted{
-        color: var(--color-text-secondary, #6b7280);
-        font-size: 12px;
-    }
-
-    .poi-list{
-        margin-top: 10px;
-        display:flex;
-        flex-direction:column;
-        gap:8px;
-        max-height: 220px;
-        overflow:auto;
-        padding-right:4px;
-    }
-
-    .poi-item{
-        border: 1px solid var(--color-border-subtle);
-        border-radius: 14px;
-        padding: 10px;
-        background: rgba(255,255,255,.02);
-    }
-    .poi-item b{ font-size: 13px; }
-
-    .poi-meta{
-        margin-top: 4px;
-        font-size: 12px;
-        color: var(--color-text-secondary, #6b7280);
-        display:flex;
-        gap:10px;
-        flex-wrap:wrap;
-    }
-</style>
+<script
+  src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') }}&callback=initMap&libraries=places,geometry"
+  async defer>
+</script>
 @endpush
 
 @section('content')
 @php
     $filters = $filters ?? [];
-
-    // ✅ retour vers index en conservant les filtres (sans focus/page/mode)
     $backFilters = $filters;
     unset($backFilters['focus_trajet_id'], $backFilters['page'], $backFilters['mode']);
 
@@ -204,90 +210,17 @@
             </div>
         </div>
 
-        <a href="{{ route('trajets.index', $backFilters) }}" class="back-btn">
-            <i class="fas fa-arrow-left"></i>
-            <span>Retour</span>
+        <a href="{{ route('trajets.index', $backFilters) }}" class="btn-secondary py-2 px-4 text-sm">
+            <i class="fas fa-arrow-left mr-2"></i> Retour
         </a>
     </header>
 
-    {{-- ✅ INFOS DETAILLEES DU TRAJET (si focus) --}}
-    @if(!empty($focusTrajet))
-        <div id="trajet-{{ $focusTrajet->id }}" class="ui-card p-4 border border-border-subtle rounded-2xl">
-            <div class="flex items-start justify-between flex-wrap gap-3">
-                <div class="space-y-2">
-                    <div class="text-sm text-secondary">
-                        Trajet <b>#{{ $focusTrajet->id }}</b>
-                        @if(!empty($mode) && $mode==='detail')
-                            <span class="ml-2 chip"><i class="fas fa-crosshairs text-primary"></i> Mode détail</span>
-                        @endif
-                    </div>
-
-                    <div class="text-sm">
-                        <b>Départ :</b>
-                        {{ \Carbon\Carbon::parse($focusTrajet->start_time)->format('d/m/Y H:i') }}
-                        —
-                        <b>Arrivée :</b>
-                        {{ $focusTrajet->end_time ? \Carbon\Carbon::parse($focusTrajet->end_time)->format('d/m/Y H:i') : 'N/A' }}
-                    </div>
-
-                    <div class="text-xs text-secondary">
-                        <b>Coord. départ :</b>
-                        long {{ number_format($focusTrajet->start_longitude, 6) }},
-                        lat {{ number_format($focusTrajet->start_latitude, 6) }}
-                        —
-                        <b>Coord. arrivée :</b>
-                        long {{ number_format($focusTrajet->end_longitude, 6) }},
-                        lat {{ number_format($focusTrajet->end_latitude, 6) }}
-                    </div>
-
-                    <div class="text-xs text-secondary">
-                        <b>Distance :</b> {{ number_format($focusTrajet->total_distance_km ?? 0, 2) }} km
-                        —
-                        <b>Durée :</b> {{ (int)($focusTrajet->duration_minutes ?? 0) }} min
-                        —
-                        <b>Vit. moy :</b> {{ number_format($focusTrajet->avg_speed_kmh ?? 0, 1) }} km/h
-                        —
-                        <b>Vit. max :</b> {{ number_format($focusTrajet->max_speed_kmh ?? 0, 1) }} km/h
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-2">
-                    @if(empty($mode) || $mode !== 'detail')
-                        @php
-                            $q = request()->query();
-                            $q['mode'] = 'detail';
-                            $q['focus_trajet_id'] = $focusTrajet->id;
-                            unset($q['page']);
-                        @endphp
-                        <a class="btn-secondary py-2 px-4 text-sm"
-                           href="{{ route('voitures.trajets', ['id'=>$voiture->id] + $q) }}#trajet-{{ $focusTrajet->id }}">
-                            <i class="fas fa-map-marked-alt mr-2"></i> Afficher uniquement
-                        </a>
-                    @else
-                        @php
-                            $q = request()->query();
-                            unset($q['mode'], $q['focus_trajet_id'], $q['page']);
-                        @endphp
-                        <a class="btn-secondary py-2 px-4 text-sm"
-                           href="{{ route('voitures.trajets', ['id'=>$voiture->id] + $q) }}">
-                            <i class="fas fa-list mr-2"></i> Retour à la liste filtrée
-                        </a>
-                    @endif
-                </div>
-            </div>
-        </div>
-    @endif
-
-    <!-- FILTRES (AUTO) -->
-    <div class="filter-bar ui-card">
+    {{-- FILTRES --}}
+    <div class="ui-card p-4 border border-border-subtle rounded-2xl">
         <form id="filtersForm" method="GET" action="{{ url()->current() }}"
               class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-
-            {{-- ✅ IMPORTANT : on n’inclut PAS focus_trajet_id ni mode dans le form --}}
-            {{-- reset page quand on refiltre --}}
             <input type="hidden" name="page" value="">
 
-            {{-- SWITCH VEHICULE --}}
             <div class="md:col-span-2">
                 <label class="text-sm font-medium text-secondary">Changer de véhicule</label>
                 <input id="vehicleSearch" list="vehiclesList" class="ui-input-style w-full"
@@ -301,7 +234,6 @@
                 <p class="text-xs text-secondary mt-1">Choisis une proposition pour basculer (garde les filtres).</p>
             </div>
 
-            <!-- TYPE -->
             <div class="md:col-span-2">
                 <label class="text-sm font-medium text-secondary">Filtrer par</label>
                 <select id="filter-type" name="quick" class="ui-input-style w-full">
@@ -315,14 +247,12 @@
                 </select>
             </div>
 
-            <!-- DATE UNIQUE -->
             <div id="single-date" class="hidden md:col-span-2">
                 <label class="text-sm font-medium text-secondary">Date</label>
                 <input id="dateInput" type="date" name="date" class="ui-input-style w-full"
                        value="{{ request('date') }}">
             </div>
 
-            <!-- PLAGE -->
             <div id="date-range" class="hidden md:col-span-2">
                 <label class="text-sm font-medium text-secondary">Plage de dates</label>
                 <div class="grid grid-cols-2 gap-3">
@@ -333,7 +263,6 @@
                 </div>
             </div>
 
-            <!-- HEURES -->
             <div class="md:col-span-2">
                 <label class="text-sm font-medium text-secondary">Heures</label>
                 <div class="grid grid-cols-2 gap-3">
@@ -351,90 +280,82 @@
         </form>
     </div>
 
-    <!-- MAP + OVERLAY (MODE CARTE) -->
+    <!-- MAP -->
     <div class="map-shell">
-        <div class="map-overlay">
-            <div class="overlay-card">
-                <div class="overlay-title">
-                    <div class="font-orbitron font-bold" style="color:var(--color-text)">
-                        <i class="fas fa-map-marker-alt text-primary mr-2"></i> Mode carte
+        <div class="map-top-actions">
+            <button type="button" class="floating-btn" id="btnMode">
+                <i class="fas fa-layer-group"></i> Mode
+            </button>
+            <button type="button" class="floating-btn" id="btnReplay">
+                <i class="fas fa-play-circle"></i> Replay
+            </button>
+        </div>
+
+        <!-- MODE PANEL -->
+        <div class="floating-panel" id="panelMode">
+            <div class="panel-card">
+                <div class="panel-title">
+                    <div><i class="fas fa-layer-group mr-2 text-primary"></i> Mode</div>
+                    <button type="button" class="mini-btn" data-close="panelMode"><i class="fas fa-times"></i></button>
+                </div>
+
+                <div class="mini-actions">
+                    <button type="button" class="mini-btn active" data-maptype="roadmap">Plan</button>
+                    <button type="button" class="mini-btn" data-maptype="hybrid">Hybride</button>
+                    <button type="button" class="mini-btn" data-maptype="satellite">Satellite</button>
+                    <button type="button" class="mini-btn" data-maptype="terrain">Terrain</button>
+                </div>
+
+                <div class="small-grid">
+                    <button type="button" class="mini-btn" id="btnTraffic"><i class="fas fa-traffic-light"></i> Trafic</button>
+                    <button type="button" class="mini-btn" id="btnLocate"><i class="fas fa-crosshairs"></i> Ma position</button>
+                </div>
+
+                <div class="muted" style="margin-top:10px">
+                    Ce panneau disparaît si tu sors la souris (5s). Pendant replay, il disparaît vite.
+                </div>
+            </div>
+        </div>
+
+        <!-- REPLAY PANEL -->
+        <div class="floating-panel" id="panelReplay">
+            <div class="panel-card">
+                <div class="panel-title">
+                    <div><i class="fas fa-play-circle mr-2 text-primary"></i> Replay</div>
+                    <button type="button" class="mini-btn" data-close="panelReplay"><i class="fas fa-times"></i></button>
+                </div>
+
+                <div class="mini-actions" style="justify-content:space-between">
+                    <div class="mini-actions">
+                        <button type="button" class="mini-btn" id="rpPrev" title="Précédent"><i class="fas fa-step-backward"></i></button>
+                        <button type="button" class="mini-btn" id="rpPlay" title="Play"><i class="fas fa-play"></i></button>
+                        <button type="button" class="mini-btn" id="rpPause" title="Pause"><i class="fas fa-pause"></i></button>
+                        <button type="button" class="mini-btn" id="rpStop" title="Stop"><i class="fas fa-stop"></i></button>
+                        <button type="button" class="mini-btn" id="rpNext" title="Suivant"><i class="fas fa-step-forward"></i></button>
                     </div>
-                    <div class="overlay-actions">
-                        <button type="button" class="map-mini-btn" id="btnLocate">
-                            <i class="fas fa-crosshairs"></i> Ma position
-                        </button>
-                        <button type="button" class="map-mini-btn" id="btnTraffic">
-                            <i class="fas fa-traffic-light"></i> Trafic
-                        </button>
+
+                    <div class="mini-actions">
+                        <button type="button" class="mini-btn" id="rpSlow" title="Ralentir"><i class="fas fa-minus"></i></button>
+                        <span class="speed-pill" id="rpSpeed">x8</span>
+                        <button type="button" class="mini-btn" id="rpFast" title="Accélérer"><i class="fas fa-plus"></i></button>
                     </div>
                 </div>
 
-                <div class="overlay-actions mb-2">
-                    <button type="button" class="map-mini-btn active" data-maptype="roadmap">Plan</button>
-                    <button type="button" class="map-mini-btn" data-maptype="hybrid">Hybride</button>
-                    <button type="button" class="map-mini-btn" data-maptype="satellite">Satellite</button>
-                    <button type="button" class="map-mini-btn" data-maptype="terrain">Terrain</button>
+                <div class="muted" style="margin-top:10px">
+                    <div><b>Heure :</b> <span id="rpTime">—</span></div>
+                    <div id="rpCoords">—</div>
+                    <div><b>Vitesse :</b> <span id="rpV">—</span></div>
                 </div>
 
-                <div class="kv" id="whereBox">
-                    <div><b>Lieu :</b> <span id="whereName">—</span></div>
-                    <div class="muted" id="whereCoords">—</div>
-                    <div class="muted" id="whereHint">Astuce : clique sur un trajet pour voir ce qu’il y a autour.</div>
-                </div>
-
-                <div class="poi-list" id="poiList">
-                    <div class="muted" style="font-size:12px;">Autour : en attente…</div>
-                </div>
+                <div class="progress"><div id="rpBar"></div></div>
             </div>
         </div>
 
         <div id="map" class="shadow-md border border-border-subtle"></div>
     </div>
 
-    <!-- RÉSUMÉ -->
-    <div class="ui-card flex flex-wrap justify-around text-center rounded-2xl">
-        <div class="p-3">
-            <p class="text-3xl font-orbitron text-primary">{{ $pageCount }}</p>
-            <p class="text-sm text-secondary">Trajets (page)</p>
-        </div>
-
-        <div class="p-3">
-            <p class="text-3xl font-orbitron text-primary">{{ $totalDistance }} km</p>
-            <p class="text-sm text-secondary">Distance totale</p>
-        </div>
-
-        <div class="p-3">
-            @php $h = floor($totalDuration / 60); $m = $totalDuration % 60; @endphp
-            <p class="text-3xl font-orbitron text-primary">{{ $h }}h {{ $m }}m</p>
-            <p class="text-sm text-secondary">Durée totale</p>
-        </div>
-
-        <div class="p-3">
-            <p class="text-3xl font-orbitron text-primary">{{ $maxSpeed }} km/h</p>
-            <p class="text-sm text-secondary">Vitesse max</p>
-        </div>
-
-        <div class="p-3">
-            <p class="text-3xl font-orbitron text-primary">{{ $avgSpeed }} km/h</p>
-            <p class="text-sm text-secondary">Vitesse moyenne</p>
-        </div>
-    </div>
-
-    <!-- TABLEAU TRAJETS (PAGE) -->
+    <!-- TABLEAU (optionnel, je le laisse comme tu avais) -->
     <div class="ui-card p-4 rounded-2xl">
-        <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
-            <h2 class="text-lg font-orbitron font-bold" style="color: var(--color-text);">
-                Liste des trajets (page)
-            </h2>
-
-            @if(!empty($focusId))
-                <a class="btn-secondary py-2 px-4 text-sm"
-                   href="{{ route('voitures.trajets', ['id'=>$voiture->id] + array_diff_key(request()->query(), array_flip(['focus_trajet_id','mode','page']))) }}">
-                    <i class="fas fa-times mr-2"></i> Enlever la sélection
-                </a>
-            @endif
-        </div>
-
         <div class="overflow-x-auto">
             <table class="ui-table w-full">
                 <thead>
@@ -452,48 +373,27 @@
                 @forelse($trajets as $t)
                     @php
                         $isFocus = !empty($focusId) && (int)$focusId === (int)$t->id;
-
                         $qFocus = request()->query();
                         $qFocus['focus_trajet_id'] = $t->id;
-                        unset($qFocus['mode']); // ✅ rester en mode liste
-
+                        unset($qFocus['mode']);
                         $qDetail = request()->query();
                         $qDetail['focus_trajet_id'] = $t->id;
                         $qDetail['mode'] = 'detail';
-                        unset($qDetail['page']); // ✅ propre pour détail
+                        unset($qDetail['page']);
                     @endphp
 
                     <tr id="trajet-{{ $t->id }}" class="hover:bg-hover-subtle transition {{ $isFocus ? 'trip-row-focus' : '' }}">
                         <td class="font-semibold text-primary">#{{ $t->id }}</td>
-
-                        <td>
-                            <span class="font-medium">
-                                {{ \Carbon\Carbon::parse($t->start_time)->format('d/m/Y H:i') }}
-                            </span><br>
-                            <span class="text-xs text-secondary">
-                                (long: {{ number_format($t->start_longitude, 5) }}, lat: {{ number_format($t->start_latitude, 5) }})
-                            </span>
-                        </td>
-
-                        <td>
-                            <span class="font-medium">
-                                {{ $t->end_time ? \Carbon\Carbon::parse($t->end_time)->format('d/m/Y H:i') : 'N/A' }}
-                            </span><br>
-                            <span class="text-xs text-secondary">
-                                (long: {{ number_format($t->end_longitude, 5) }}, lat: {{ number_format($t->end_latitude, 5) }})
-                            </span>
-                        </td>
-
+                        <td>{{ \Carbon\Carbon::parse($t->start_time)->format('d/m/Y H:i') }}</td>
+                        <td>{{ $t->end_time ? \Carbon\Carbon::parse($t->end_time)->format('d/m/Y H:i') : 'N/A' }}</td>
                         <td class="font-bold text-blue-600">{{ number_format($t->total_distance_km ?? 0, 2) }} km</td>
                         <td class="text-orange-600">{{ number_format($t->avg_speed_kmh ?? 0, 1) }} km/h</td>
                         <td class="text-red-600">{{ number_format($t->max_speed_kmh ?? 0, 1) }} km/h</td>
-
                         <td class="whitespace-nowrap">
                             <a class="text-primary hover:text-primary-dark font-medium mr-3"
                                href="{{ route('voitures.trajets', ['id'=>$voiture->id] + $qFocus) }}#trajet-{{ $t->id }}">
                                 <i class="fas fa-crosshairs mr-1"></i> Voir
                             </a>
-
                             <a class="text-primary hover:text-primary-dark font-medium"
                                href="{{ route('voitures.trajets', ['id'=>$voiture->id] + $qDetail) }}#trajet-{{ $t->id }}">
                                 <i class="fas fa-eye mr-1"></i> Détails
@@ -501,11 +401,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr>
-                        <td colspan="7" class="text-center py-6 text-secondary bg-hover-subtle">
-                            <i class="fas fa-info-circle mr-1"></i> Aucun trajet trouvé.
-                        </td>
-                    </tr>
+                    <tr><td colspan="7" class="text-center py-6 text-secondary bg-hover-subtle">Aucun trajet trouvé.</td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -523,185 +419,182 @@
 {{-- AUTO-FILTER + switch véhicule --}}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    const form = document.getElementById('filtersForm');
+  const form = document.getElementById('filtersForm');
+  if (!form) return;
 
-    const type   = document.getElementById("filter-type");
-    const single = document.getElementById("single-date");
-    const range  = document.getElementById("date-range");
+  const type   = document.getElementById("filter-type");
+  const single = document.getElementById("single-date");
+  const range  = document.getElementById("date-range");
 
-    const dateInput      = document.getElementById("dateInput");
-    const startDateInput = document.getElementById("startDateInput");
-    const endDateInput   = document.getElementById("endDateInput");
-    const startTimeInput = document.getElementById("startTimeInput");
-    const endTimeInput   = document.getElementById("endTimeInput");
+  const dateInput      = document.getElementById("dateInput");
+  const startDateInput = document.getElementById("startDateInput");
+  const endDateInput   = document.getElementById("endDateInput");
+  const startTimeInput = document.getElementById("startTimeInput");
+  const endTimeInput   = document.getElementById("endTimeInput");
 
-    // switch véhicule via datalist
-    const vehicleSearch = document.getElementById('vehicleSearch');
-    const vehicles = @json(($vehicles ?? collect())->map(fn($v) => ['id'=>$v->id,'immatriculation'=>$v->immatriculation])->values());
-    const urlTemplate = @json(route('voitures.trajets', ['id' => '__VID__']));
+  const vehicleSearch = document.getElementById('vehicleSearch');
+  const vehicles = @json(($vehicles ?? collect())->map(fn($v) => ['id'=>$v->id,'immatriculation'=>$v->immatriculation])->values());
+  const urlTemplate = @json(route('voitures.trajets', ['id' => '__VID__']));
 
-    function getVehicleIdFromImmat(val) {
-        if (!val) return null;
-        const norm = String(val).trim().toLowerCase();
-        const hit = vehicles.find(v => String(v.immatriculation).toLowerCase() === norm);
-        return hit ? hit.id : null;
-    }
+  function updateUI() {
+    single?.classList.add("hidden");
+    range?.classList.add("hidden");
+    if (type?.value === "date")  single?.classList.remove("hidden");
+    if (type?.value === "range") range?.classList.remove("hidden");
+  }
 
-    if (vehicleSearch) {
-        vehicleSearch.addEventListener('change', () => {
-            const vid = getVehicleIdFromImmat(vehicleSearch.value);
-            if (!vid) return;
+  function getVehicleIdFromImmat(val) {
+    const norm = String(val||'').trim().toLowerCase();
+    const hit = vehicles.find(v => String(v.immatriculation).toLowerCase() === norm);
+    return hit ? hit.id : null;
+  }
 
-            const params = new URLSearchParams(window.location.search);
+  vehicleSearch?.addEventListener('change', () => {
+    const vid = getVehicleIdFromImmat(vehicleSearch.value);
+    if (!vid) return;
 
-            // on garde les filtres, mais on enlève focus/mode/page
-            params.delete('focus_trajet_id');
-            params.delete('mode');
-            params.delete('page');
+    const params = new URLSearchParams(window.location.search);
+    params.delete('focus_trajet_id'); params.delete('mode'); params.delete('page');
 
-            const url = urlTemplate.replace('__VID__', vid)
-                + (params.toString() ? ('?' + params.toString()) : '');
+    const url = urlTemplate.replace('__VID__', vid) + (params.toString() ? ('?' + params.toString()) : '');
+    window.location.href = url;
+  });
 
-            window.location.href = url;
-        });
-    }
+  let tmr=null;
+  function debounceSubmit(ms=450){ clearTimeout(tmr); tmr=setTimeout(()=>form.submit(), ms); }
 
-    // debounce submit
-    let tmr = null;
-    function debounceSubmit(ms = 450) {
-        clearTimeout(tmr);
-        tmr = setTimeout(() => form.submit(), ms);
-    }
+  updateUI();
 
-    function updateUI() {
-        single.classList.add("hidden");
-        range.classList.add("hidden");
+  type?.addEventListener("change", () => {
+    const pageHidden = form.querySelector('input[name="page"]');
+    if (pageHidden) pageHidden.value = '';
 
-        if (type.value === "date")  single.classList.remove("hidden");
-        if (type.value === "range") range.classList.remove("hidden");
-    }
-
-    function canAutoSubmitForType() {
-        if (type.value === 'date') {
-            return !!(dateInput && dateInput.value);
-        }
-        if (type.value === 'range') {
-            return !!((startDateInput && startDateInput.value) || (endDateInput && endDateInput.value));
-        }
-        return true;
-    }
+    if (type.value !== 'date' && dateInput) dateInput.value = '';
+    if (type.value !== 'range') { if(startDateInput) startDateInput.value=''; if(endDateInput) endDateInput.value=''; }
 
     updateUI();
+    // auto-submit only when enough inputs
+    if (type.value === 'date' && !(dateInput && dateInput.value)) return;
+    if (type.value === 'range' && !((startDateInput && startDateInput.value) || (endDateInput && endDateInput.value))) return;
 
-    type.addEventListener("change", () => {
-        const pageHidden = form.querySelector('input[name="page"]');
-        if (pageHidden) pageHidden.value = '';
+    form.submit();
+  });
 
-        if (type.value !== 'date' && dateInput) dateInput.value = '';
-        if (type.value !== 'range') {
-            if (startDateInput) startDateInput.value = '';
-            if (endDateInput) endDateInput.value = '';
-        }
+  dateInput?.addEventListener('change', ()=> { if(type.value==='date') form.submit(); });
+  [startDateInput, endDateInput].forEach(inp => inp?.addEventListener('change', ()=> { if(type.value==='range') form.submit(); }));
 
-        updateUI();
-        if (canAutoSubmitForType()) form.submit();
-    });
-
-    if (dateInput) {
-        dateInput.addEventListener('change', () => {
-            if (type.value === 'date' && canAutoSubmitForType()) form.submit();
-        });
-    }
-
-    [startDateInput, endDateInput].forEach(inp => {
-        if (!inp) return;
-        inp.addEventListener('change', () => {
-            if (type.value === 'range' && canAutoSubmitForType()) form.submit();
-        });
-    });
-
-    [startTimeInput, endTimeInput].forEach(inp => {
-        if (!inp) return;
-        inp.addEventListener('input', () => debounceSubmit(500));
-        inp.addEventListener('change', () => debounceSubmit(200));
-    });
+  [startTimeInput, endTimeInput].forEach(inp => {
+    inp?.addEventListener('input', ()=>debounceSubmit(500));
+    inp?.addEventListener('change', ()=>debounceSubmit(200));
+  });
 });
 </script>
 
-{{-- GOOGLE MAPS (MODE CARTE + PLACES + POSITION + TRAJETS) --}}
+{{-- MAP + TRACKS + REPLAY (stable boot) --}}
 <script>
-window.initMap = function () {
-    const mapDiv = document.getElementById("map");
-    if (!mapDiv) return;
+  window.__startMap = function bootMap() {
+    try {
+      console.log('[Trajets] bootMap start…');
 
-    const tracks  = @json($tracks ?? []);
-    const focusId = @json($focusId);
+      const mapDiv = document.getElementById('map');
+      if (!mapDiv) { console.error('[Trajets] #map not found'); return; }
+      if (!window.google || !google.maps) { console.error('[Trajets] Google Maps not ready'); return; }
 
-    const primary = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#F58220';
+      const tracksRaw = @json($tracks ?? []);
+      const focusId = @json($focusId);
 
-    // UI refs
-    const whereName   = document.getElementById('whereName');
-    const whereCoords = document.getElementById('whereCoords');
-    const whereHint   = document.getElementById('whereHint');
-    const poiList     = document.getElementById('poiList');
+      console.log('[Trajets] tracksRaw:', tracksRaw?.length || 0, 'focusId:', focusId);
 
-    const btnLocate   = document.getElementById('btnLocate');
-    const btnTraffic  = document.getElementById('btnTraffic');
-    const mapTypeBtns = Array.from(document.querySelectorAll('[data-maptype]'));
+      // UI
+      const btnMode = document.getElementById('btnMode');
+      const btnReplay = document.getElementById('btnReplay');
+      const panelMode = document.getElementById('panelMode');
+      const panelReplay = document.getElementById('panelReplay');
 
-    // services
-    const geocoder = new google.maps.Geocoder();
-    const trafficLayer = new google.maps.TrafficLayer();
-    let trafficOn = false;
+      const btnTraffic = document.getElementById('btnTraffic');
+      const btnLocate = document.getElementById('btnLocate');
+      const mapTypeBtns = Array.from(document.querySelectorAll('[data-maptype]'));
 
-    function setWhere(lat, lng, title = null) {
-        if (whereCoords) whereCoords.textContent = `Lat ${Number(lat).toFixed(6)} • Lng ${Number(lng).toFixed(6)}`;
-        if (title && whereName) whereName.textContent = title;
-    }
+      const rpPrev  = document.getElementById('rpPrev');
+      const rpPlay  = document.getElementById('rpPlay');
+      const rpPause = document.getElementById('rpPause');
+      const rpStop  = document.getElementById('rpStop');
+      const rpNext  = document.getElementById('rpNext');
+      const rpSlow  = document.getElementById('rpSlow');
+      const rpFast  = document.getElementById('rpFast');
+      const rpSpeed = document.getElementById('rpSpeed');
+      const rpTime  = document.getElementById('rpTime');
+      const rpCoords= document.getElementById('rpCoords');
+      const rpV     = document.getElementById('rpV');
+      const rpBar   = document.getElementById('rpBar');
 
-    function setPoiLoading(text="Recherche des lieux autour…") {
-        if (!poiList) return;
-        poiList.innerHTML = `<div class="muted" style="font-size:12px;">${text}</div>`;
-    }
+      // safe primary color
+      const primary = (getComputedStyle(document.documentElement).getPropertyValue('--color-primary') || '').trim() || '#F58220';
 
-    function clearPoiMarkers() {
-        while (poiMarkers.length) poiMarkers.pop().setMap(null);
-    }
+      // ----------------------------
+      // panels: click only + autohide
+      // ----------------------------
+      window.__replayPlaying = false;
 
-    function distanceKm(from, toLatLng) {
-        try {
-            if (google.maps.geometry && google.maps.geometry.spherical) {
-                return google.maps.geometry.spherical.computeDistanceBetween(
-                    new google.maps.LatLng(from.lat, from.lng),
-                    toLatLng
-                ) / 1000;
-            }
-        } catch(e){}
-        return null;
-    }
+      function makeAutoHide(panelEl, getPlaying) {
+        let timer=null;
+        let inside=false;
 
-    function reverseGeocode(latLng) {
-        geocoder.geocode({ location: latLng }, (res, status) => {
-            if (status === 'OK' && res && res[0]) {
-                if (whereName) whereName.textContent = res[0].formatted_address;
-            }
-        });
-    }
-
-    // center default
-    let center = { lat: 4.05, lng: 9.7 };
-    for (const tr of tracks) {
-        if (tr.points && tr.points.length) {
-            center = { lat: parseFloat(tr.points[0].lat), lng: parseFloat(tr.points[0].lng) };
-            break;
-        } else if (tr.start && tr.start.lat) {
-            center = { lat: parseFloat(tr.start.lat), lng: parseFloat(tr.start.lng) };
-            break;
+        function schedule(ms){
+          clearTimeout(timer);
+          timer=setTimeout(()=>{ if(!inside) panelEl.style.display='none'; }, ms);
         }
-    }
 
-    // ✅ POI visibles : pas de style qui cache "poi"
-    const map = new google.maps.Map(mapDiv, {
+        panelEl.addEventListener('mouseenter', ()=>{ inside=true; clearTimeout(timer); });
+        panelEl.addEventListener('mouseleave', ()=>{
+          inside=false;
+          schedule(getPlaying() ? 600 : 5000);
+        });
+
+        panelEl.__schedule = schedule;
+      }
+
+      if(panelMode) makeAutoHide(panelMode, ()=>window.__replayPlaying);
+      if(panelReplay) makeAutoHide(panelReplay, ()=>window.__replayPlaying);
+
+      function togglePanel(panelEl, otherEl){
+        if(!panelEl) return;
+        const isOpen = panelEl.style.display === 'block';
+        if(otherEl) otherEl.style.display = 'none';
+        panelEl.style.display = isOpen ? 'none' : 'block';
+        if(!isOpen) panelEl.__schedule && panelEl.__schedule(1400);
+      }
+
+      btnMode?.addEventListener('click', (e)=>{ e.stopPropagation(); togglePanel(panelMode, panelReplay); });
+      btnReplay?.addEventListener('click', (e)=>{ e.stopPropagation(); togglePanel(panelReplay, panelMode); });
+
+      document.querySelectorAll('[data-close]').forEach(x=>{
+        x.addEventListener('click', ()=>{
+          const id = x.getAttribute('data-close');
+          const el = document.getElementById(id);
+          if(el) el.style.display='none';
+        });
+      });
+
+      document.addEventListener('click', (e)=>{
+        const insideMode = panelMode && panelMode.contains(e.target);
+        const insideReplay = panelReplay && panelReplay.contains(e.target);
+        const isBtn = (btnMode && (e.target===btnMode || btnMode.contains(e.target))) || (btnReplay && (e.target===btnReplay || btnReplay.contains(e.target)));
+        if(insideMode || insideReplay || isBtn) return;
+        if(panelMode) panelMode.style.display='none';
+        if(panelReplay) panelReplay.style.display='none';
+      });
+
+      // ----------------------------
+      // center
+      // ----------------------------
+      let center = { lat: 4.05, lng: 9.7 };
+      for (const tr of (tracksRaw||[])) {
+        if (tr?.points?.length) { center = { lat:+tr.points[0].lat, lng:+tr.points[0].lng }; break; }
+        if (tr?.start?.lat) { center = { lat:+tr.start.lat, lng:+tr.start.lng }; break; }
+      }
+
+      const map = new google.maps.Map(mapDiv, {
         zoom: 13,
         center,
         mapTypeId: "roadmap",
@@ -710,379 +603,380 @@ window.initMap = function () {
         streetViewControl: true,
         clickableIcons: true,
         gestureHandling: "greedy"
-    });
+      });
 
-    // Places
-    const places = new google.maps.places.PlacesService(map);
-    const poiMarkers = [];
+      // traffic
+      const trafficLayer = new google.maps.TrafficLayer();
+      let trafficOn=false;
+      btnTraffic?.addEventListener('click', ()=>{
+        trafficOn = !trafficOn;
+        trafficLayer.setMap(trafficOn ? map : null);
+        btnTraffic.classList.toggle('active', trafficOn);
+      });
 
-    function renderPoiList(items, origin) {
-        if (!poiList) return;
-        if (!items || !items.length) {
-            poiList.innerHTML = `<div class="muted" style="font-size:12px;">Aucun lieu trouvé à proximité.</div>`;
-            return;
-        }
+      // map types
+      mapTypeBtns.forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          mapTypeBtns.forEach(b=>b.classList.remove('active'));
+          btn.classList.add('active');
+          map.setMapTypeId(btn.getAttribute('data-maptype'));
+        });
+      });
 
-        poiList.innerHTML = items.map(p => {
-            const d = (p.__distKm != null) ? `${p.__distKm.toFixed(2)} km` : '—';
-            const open = (p.opening_hours && typeof p.opening_hours.open_now === 'boolean')
-                ? (p.opening_hours.open_now ? 'Ouvert' : 'Fermé')
-                : '—';
-            const rating = (p.rating != null) ? `${Number(p.rating).toFixed(1)}/5` : '—';
+      // locate
+      let myMarker=null, myCircle=null;
+      btnLocate?.addEventListener('click', ()=>{
+        if(!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition((pos)=>{
+          const lat=pos.coords.latitude, lng=pos.coords.longitude, acc=pos.coords.accuracy||0;
+          const latLng=new google.maps.LatLng(lat,lng);
+          map.panTo(latLng); if(map.getZoom()<16) map.setZoom(16);
 
-            return `
-                <div class="poi-item">
-                    <b>${p.name || 'Lieu'}</b>
-                    <div class="poi-meta">
-                        <span><i class="fas fa-walking mr-1"></i>${d}</span>
-                        <span><i class="fas fa-star mr-1"></i>${rating}</span>
-                        <span><i class="fas fa-store mr-1"></i>${open}</span>
-                    </div>
-                    <div class="poi-meta">
-                        <span>${p.vicinity || ''}</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        // markers
-        clearPoiMarkers();
-        items.slice(0, 8).forEach(p => {
-            if (!p.geometry || !p.geometry.location) return;
-            const m = new google.maps.Marker({
-                map,
-                position: p.geometry.location,
-                title: p.name,
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    fillColor: "#0ea5e9",
-                    fillOpacity: 1,
-                    strokeColor: "#ffffff",
-                    strokeWeight: 2,
-                    scale: 7
-                }
+          if(!myMarker){
+            myMarker=new google.maps.Marker({
+              map, position:latLng, title:"Ma position",
+              icon:{ path:google.maps.SymbolPath.CIRCLE, fillColor:"#2563eb", fillOpacity:1, strokeColor:"#fff", strokeWeight:2, scale:9 }
             });
-            poiMarkers.push(m);
-        });
-    }
+          } else myMarker.setPosition(latLng);
 
-    function searchNearby(originLatLng) {
-        const origin = { lat: originLatLng.lat(), lng: originLatLng.lng() };
-        setWhere(origin.lat, origin.lng, "Point sélectionné");
-        setPoiLoading();
+          if(!myCircle){
+            myCircle=new google.maps.Circle({ map, center:latLng, radius:acc, strokeOpacity:.2, fillOpacity:.08 });
+          } else { myCircle.setCenter(latLng); myCircle.setRadius(acc); }
+        }, ()=>{}, { enableHighAccuracy:true, timeout:8000 });
+      });
 
-        const types = ['restaurant','gas_station','atm','hospital','pharmacy','police','store'];
+      // ----------------------------
+      // ✅ points correction (anti contours)
+      // ----------------------------
+      function haversineMeters(a,b){
+        const R=6371000;
+        const toRad=x=>x*Math.PI/180;
+        const dLat=toRad(b.lat-a.lat);
+        const dLng=toRad(b.lng-a.lng);
+        const lat1=toRad(a.lat), lat2=toRad(b.lat);
+        const s=Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+        return 2*R*Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+      }
 
-        const all = [];
-        let done = 0;
+      function safeTimeMs(t){
+        if(!t) return null;
+        // t = "YYYY-mm-dd HH:ii:ss" -> "YYYY-mm-ddTHH:ii:ss"
+        const iso = String(t).replace(' ','T');
+        const ms = Date.parse(iso); // ✅ pas de 'Z' (sinon tu changes la timezone)
+        return Number.isNaN(ms) ? null : ms;
+      }
 
-        clearPoiMarkers();
+      function cleanPoints(raw){
+        const pts = (raw||[]).map(p=>({ lat:+p.lat, lng:+p.lng, t:p.t||null, speed:+(p.speed||0) }));
+        if(pts.length<2) return pts;
 
-        types.forEach(tp => {
-            places.nearbySearch({ location: originLatLng, radius: 1200, type: tp }, (results, status) => {
-                done++;
+        const out=[];
+        let prev=null;
 
-                if (status === google.maps.places.PlacesServiceStatus.OK && results && results.length) {
-                    results.forEach(r => all.push(r));
-                }
+        const MAX_KMH = 140;
+        const MAX_JUMP_M = 220;
+        const MAX_JUMP_S = 10;
+        const MIN_MOVE_M = 3;
 
-                if (done === types.length) {
-                    // dédoublonnage
-                    const mapById = new Map();
-                    all.forEach(p => { if (p.place_id) mapById.set(p.place_id, p); });
+        for(const p of pts){
+          if(!prev){ out.push(p); prev=p; continue; }
+          const d = haversineMeters(prev,p);
+          if(d < MIN_MOVE_M) continue;
 
-                    const unique = Array.from(mapById.values()).slice(0, 14);
+          const t1 = safeTimeMs(prev.t);
+          const t2 = safeTimeMs(p.t);
+          if(t1!=null && t2!=null){
+            const dt = Math.abs(t2-t1)/1000;
+            if(dt>0){
+              const v = (d/dt)*3.6;
+              if(v > MAX_KMH) continue;
+              if(d > MAX_JUMP_M && dt <= MAX_JUMP_S) continue;
+            } else {
+              if(d > MAX_JUMP_M) continue;
+            }
+          } else {
+            if(d > MAX_JUMP_M*3) continue;
+          }
 
-                    // distances
-                    unique.forEach(p => {
-                        if (p.geometry && p.geometry.location) {
-                            const d = distanceKm(origin, p.geometry.location);
-                            if (d != null) p.__distKm = d;
-                        }
-                    });
-
-                    unique.sort((a,b) => (a.__distKm ?? 999) - (b.__distKm ?? 999));
-                    renderPoiList(unique, origin);
-                }
-            });
-        });
-    }
-
-    // my position
-    let myMarker = null;
-    let myAccuracyCircle = null;
-
-    function locateMe() {
-        if (!navigator.geolocation) {
-            if (whereHint) whereHint.textContent = "Géolocalisation non supportée sur ce navigateur.";
-            return;
+          out.push(p);
+          prev=p;
         }
+        return out;
+      }
 
-        if (whereHint) whereHint.textContent = "Localisation en cours…";
-        navigator.geolocation.getCurrentPosition((pos) => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            const acc = pos.coords.accuracy || 0;
+      function smooth(points, w=5){
+        if(points.length < 5) return points;
+        if(w%2===0) w+=1;
+        const half=Math.floor(w/2);
+        const res=[];
+        for(let i=0;i<points.length;i++){
+          let from=Math.max(0,i-half), to=Math.min(points.length-1,i+half);
+          let sumLat=0,sumLng=0,c=0;
+          for(let j=from;j<=to;j++){ sumLat+=points[j].lat; sumLng+=points[j].lng; c++; }
+          res.push({ ...points[i], lat:sumLat/c, lng:sumLng/c });
+        }
+        return res;
+      }
 
-            const latLng = new google.maps.LatLng(lat, lng);
-            map.panTo(latLng);
-            if (map.getZoom() < 16) map.setZoom(16);
+      // ✅ IMPORTANT: on coupe en segments au lieu de tracer un grand trait
+      function splitSegments(points){
+        const segs=[];
+        if(points.length<2) return segs;
 
-            if (!myMarker) {
-                myMarker = new google.maps.Marker({
-                    map,
-                    position: latLng,
-                    title: "Ma position",
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        fillColor: "#2563eb",
-                        fillOpacity: 1,
-                        strokeColor: "#ffffff",
-                        strokeWeight: 2,
-                        scale: 9
-                    }
-                });
-            } else {
-                myMarker.setPosition(latLng);
-            }
+        let seg=[points[0]];
+        for(let i=1;i<points.length;i++){
+          const a=points[i-1], b=points[i];
+          const d=haversineMeters(a,b);
 
-            if (!myAccuracyCircle) {
-                myAccuracyCircle = new google.maps.Circle({
-                    map,
-                    center: latLng,
-                    radius: acc,
-                    strokeOpacity: 0.2,
-                    fillOpacity: 0.08
-                });
-            } else {
-                myAccuracyCircle.setCenter(latLng);
-                myAccuracyCircle.setRadius(acc);
-            }
+          // seuil de coupure : évite les contours anormaux
+          if(d > 160){
+            if(seg.length>=2) segs.push(seg);
+            seg=[b];
+          }else{
+            seg.push(b);
+          }
+        }
+        if(seg.length>=2) segs.push(seg);
+        return segs;
+      }
 
-            setWhere(lat, lng, "Ma position");
-            reverseGeocode(latLng);
-            searchNearby(latLng);
+      function prepareTrack(tr){
+        const pts0 = tr.points || [];
+        let pts = cleanPoints(pts0);
+        pts = smooth(pts, 5);
+        const segments = splitSegments(pts);
+        return { ...tr, __pts: pts, __segments: segments };
+      }
 
-            if (whereHint) whereHint.textContent = "Tu peux aussi cliquer sur ton trajet pour explorer autour.";
-        }, () => {
-            if (whereHint) whereHint.textContent = "Impossible d’obtenir ta position (permission refusée ou GPS indispo).";
-        }, { enableHighAccuracy: true, timeout: 8000 });
-    }
+      const tracks = (tracksRaw||[]).map(prepareTrack);
 
-    // UI events
-    mapTypeBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            mapTypeBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            map.setMapTypeId(btn.getAttribute('data-maptype'));
-        });
-    });
+      // draw
+      const boundsAll = new google.maps.LatLngBounds();
 
-    if (btnTraffic) {
-        btnTraffic.addEventListener('click', () => {
-            trafficOn = !trafficOn;
-            if (trafficOn) {
-                trafficLayer.setMap(map);
-                btnTraffic.classList.add('active');
-            } else {
-                trafficLayer.setMap(null);
-                btnTraffic.classList.remove('active');
-            }
-        });
-    }
+      function circleIcon(fill){
+        return { path: google.maps.SymbolPath.CIRCLE, fillColor: fill, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, scale: 9 };
+      }
 
-    if (btnLocate) btnLocate.addEventListener('click', locateMe);
+      const hoverInfo = new google.maps.InfoWindow();
 
-    // -------- TRACKS DRAWING ----------
-    if (!tracks.length) {
-        if (whereHint) whereHint.textContent = "Aucun trajet à afficher.";
-        return;
-    }
-
-    const bounds = new google.maps.LatLngBounds();
-    const hoverInfo = new google.maps.InfoWindow();
-
-    function circleIcon(fill) {
-        return {
-            path: google.maps.SymbolPath.CIRCLE,
-            fillColor: fill,
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-            scale: 10
-        };
-    }
-
-    function dist2(a, b) {
-        const dx = a.lat - b.lat;
-        const dy = a.lng - b.lng;
-        return dx*dx + dy*dy;
-    }
-
-    function nearestPoint(latLng, points) {
-        if (!points || !points.length) return null;
-        const p = { lat: latLng.lat(), lng: latLng.lng() };
-        let best = points[0];
-        let bestD = Infinity;
-
-        for (let i=0; i<points.length; i++) {
-            const d = dist2(p, points[i]);
-            if (d < bestD) { bestD = d; best = points[i]; }
+      function nearestPoint(latLng, points){
+        if(!points || !points.length) return null;
+        const p = { lat:latLng.lat(), lng:latLng.lng() };
+        let best=points[0], bestD=Infinity;
+        for(const x of points){
+          const dx=p.lat-x.lat, dy=p.lng-x.lng;
+          const d=dx*dx+dy*dy;
+          if(d<bestD){ bestD=d; best=x; }
         }
         return best;
-    }
+      }
 
-    tracks.forEach((tr) => {
-        const pts = tr.points || [];
-        let path = [];
+      function showHover(tr, isFocus, e){
+        const closest = nearestPoint(e.latLng, tr.__pts);
+        const lat = closest ? closest.lat : e.latLng.lat();
+        const lng = closest ? closest.lng : e.latLng.lng();
+        const t   = closest?.t || tr.start_time || '';
+        const spd = closest ? (closest.speed ?? 0) : null;
 
-        if (pts.length >= 2) {
-            path = pts.map(p => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }));
-        } else if (tr.start && tr.end) {
-            path = [
-                { lat: parseFloat(tr.start.lat), lng: parseFloat(tr.start.lng) },
-                { lat: parseFloat(tr.end.lat),   lng: parseFloat(tr.end.lng) }
-            ];
-        } else return;
+        hoverInfo.setContent(`
+          <div style="font-size:13px; line-height:1.35">
+            <b>Trajet #${tr.trajet_id}${isFocus ? ' (sélectionné)' : ''}</b><br>
+            <span>Heure: <b>${t}</b></span><br>
+            <span>Lat: <b>${Number(lat).toFixed(6)}</b></span><br>
+            <span>Lng: <b>${Number(lng).toFixed(6)}</b></span><br>
+            ${spd!==null ? `<span>Vitesse: <b>${Number(spd).toFixed(1)} km/h</b></span>` : ``}
+            <div style="margin-top:6px;font-size:12px;color:#6b7280;">Clique pour activer le replay sur ce trajet</div>
+          </div>
+        `);
+        hoverInfo.setPosition(new google.maps.LatLng(lat,lng));
+        hoverInfo.open({ map });
+      }
 
-        path.forEach(p => bounds.extend(p));
+      tracks.forEach(tr=>{
+        const isFocus = focusId && String(tr.trajet_id)===String(focusId);
+        const segs = tr.__segments || [];
+        if(!segs.length) return;
 
-        const isFocus = focusId && String(tr.trajet_id) === String(focusId);
+        segs.forEach(seg=>{
+          const path = seg.map(p=>({lat:p.lat,lng:p.lng}));
+          path.forEach(p=>boundsAll.extend(p));
 
-        // polyline + flèches
-        new google.maps.Polyline({
+          new google.maps.Polyline({
             path,
             strokeColor: primary,
-            strokeOpacity: isFocus ? 1 : 0.85,
+            strokeOpacity: isFocus ? 1 : 0.82,
             strokeWeight: isFocus ? 7 : 4,
             geodesic: true,
             icons: [{
-                icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, strokeWeight: 2, scale: 2.6 },
-                offset: '0',
-                repeat: '90px'
+              icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, strokeWeight: 2, scale: 2.4 },
+              offset: '0',
+              repeat: '120px'
             }],
             map
-        });
+          });
 
-        // zone cliquable large
-        const hitLine = new google.maps.Polyline({
+          const hit = new google.maps.Polyline({
             path,
             strokeColor: primary,
             strokeOpacity: 0,
-            strokeWeight: 24,
+            strokeWeight: 26,
             clickable: true,
             map
+          });
+
+          // markers start/end for each segment
+          const startPos = path[0], endPos = path[path.length-1];
+          new google.maps.Marker({ position:startPos, map, icon: circleIcon("#16a34a"), label:{text:"D",color:"#fff",fontWeight:"800"} });
+          new google.maps.Marker({ position:endPos, map, icon: circleIcon("#dc2626"), label:{text:"A",color:"#fff",fontWeight:"800"} });
+
+          hit.addListener('mousemove', (e)=>showHover(tr,isFocus,e));
+          hit.addListener('mouseout', ()=>hoverInfo.close());
+          hit.addListener('click', (e)=>{ showHover(tr,isFocus,e); selectTrackForReplay(tr,e.latLng); });
         });
+      });
 
-        const startPos = path[0];
-        const endPos   = path[path.length - 1];
-
-        const startMarker = new google.maps.Marker({
-            position: startPos,
-            map,
-            title: `Départ — Trajet #${tr.trajet_id}`,
-            label: { text: "D", color: "#ffffff", fontWeight: "800" },
-            icon: circleIcon("#16a34a")
-        });
-
-        const endMarker = new google.maps.Marker({
-            position: endPos,
-            map,
-            title: `Arrivée — Trajet #${tr.trajet_id}`,
-            label: { text: "A", color: "#ffffff", fontWeight: "800" },
-            icon: circleIcon("#dc2626")
-        });
-
-        const startInfo = new google.maps.InfoWindow({
-            content: `<div style="font-size:13px"><b>Départ</b><br>Trajet #${tr.trajet_id}<br>${tr.start_time || ''}</div>`
-        });
-        startMarker.addListener('click', () => startInfo.open(map, startMarker));
-
-        const endInfo = new google.maps.InfoWindow({
-            content: `<div style="font-size:13px"><b>Arrivée</b><br>Trajet #${tr.trajet_id}<br>${tr.end_time || ''}</div>`
-        });
-        endMarker.addListener('click', () => endInfo.open(map, endMarker));
-
-        function showHover(e) {
-            const closest = pts.length ? nearestPoint(e.latLng, pts) : null;
-
-            const lat = closest ? closest.lat : e.latLng.lat();
-            const lng = closest ? closest.lng : e.latLng.lng();
-            const t   = (closest && closest.t) ? closest.t : (tr.start_time || '');
-            const spd = closest ? (closest.speed ?? 0) : null;
-
-            hoverInfo.setContent(`
-                <div style="font-size:13px; line-height:1.35">
-                    <b>Trajet #${tr.trajet_id}${isFocus ? ' (sélectionné)' : ''}</b><br>
-                    <span>Heure: <b>${t}</b></span><br>
-                    <span>Lat: <b>${parseFloat(lat).toFixed(6)}</b></span><br>
-                    <span>Lng: <b>${parseFloat(lng).toFixed(6)}</b></span><br>
-                    ${spd !== null ? `<span>Vitesse: <b>${Number(spd).toFixed(1)} km/h</b></span>` : ``}
-                    <div style="margin-top:6px;font-size:12px;color:#6b7280;">Clique pour voir les lieux autour</div>
-                </div>
-            `);
-
-            const pos = closest
-                ? new google.maps.LatLng(parseFloat(closest.lat), parseFloat(closest.lng))
-                : e.latLng;
-
-            hoverInfo.setPosition(pos);
-            hoverInfo.open({ map });
+      if(!boundsAll.isEmpty()){
+        const focusTrack = focusId ? tracks.find(x=>String(x.trajet_id)===String(focusId)) : null;
+        if(focusTrack?.__pts?.length>=2){
+          const b=new google.maps.LatLngBounds();
+          focusTrack.__pts.forEach(p=>b.extend({lat:p.lat,lng:p.lng}));
+          map.fitBounds(b,40);
+          google.maps.event.addListenerOnce(map,"idle",()=>{ if(map.getZoom()>18) map.setZoom(18); });
+        }else{
+          map.fitBounds(boundsAll);
+          google.maps.event.addListenerOnce(map,"idle",()=>{ if(map.getZoom()>17) map.setZoom(17); });
         }
+      }
 
-        hitLine.addListener('mousemove', showHover);
-        hitLine.addListener('mouseout', () => hoverInfo.close());
+      // ----------------------------
+      // ✅ Replay
+      // ----------------------------
+      let currentTrack=null;
+      let currentPoints=[];
+      let idx=0;
+      let timer=null;
+      let marker=null;
+      let trail=null;
 
-        hitLine.addListener('click', (e) => {
-            showHover(e);
-            if (whereHint) whereHint.textContent = "Lieux autour du point sélectionné :";
-            reverseGeocode(e.latLng);
-            searchNearby(e.latLng);
+      const speedSteps=[2,4,8,12,16,24,32];
+      let speedIndex=2; // x8 default
+      const speedMult=()=>speedSteps[speedIndex] || 8;
+      const updateSpeedUI=()=>{ if(rpSpeed) rpSpeed.textContent=`x${speedMult()}`; };
+      updateSpeedUI();
+
+      function ensureReplay(){
+        if(marker) return;
+        marker = new google.maps.Marker({
+          map,
+          position: map.getCenter(),
+          title: "Replay",
+          icon: { path:google.maps.SymbolPath.CIRCLE, fillColor: primary, fillOpacity:1, strokeColor:"#fff", strokeWeight:2, scale:8 }
         });
-    });
+        trail = new google.maps.Polyline({
+          map,
+          path: [],
+          strokeColor: primary,
+          strokeOpacity: 0.9,
+          strokeWeight: 5,
+          geodesic: true
+        });
+      }
 
-    // fit bounds focus vs global
-    const focusTrack = (focusId)
-        ? tracks.find(x => String(x.trajet_id) === String(focusId))
-        : null;
+      function pause(){
+        window.__replayPlaying=false;
+        if(timer){ clearInterval(timer); timer=null; }
+      }
 
-    if (focusTrack) {
-        const pts = focusTrack.points || [];
-        const focusBounds = new google.maps.LatLngBounds();
-        let focusPath = [];
+      function stop(){
+        pause();
+        idx=0;
+        if(trail) trail.setPath([]);
+        if(rpBar) rpBar.style.width='0%';
+        if(rpTime) rpTime.textContent='—';
+        if(rpCoords) rpCoords.textContent='—';
+        if(rpV) rpV.textContent='—';
+      }
 
-        if (pts.length >= 2) {
-            focusPath = pts.map(p => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }));
-        } else if (focusTrack.start && focusTrack.end) {
-            focusPath = [
-                { lat: parseFloat(focusTrack.start.lat), lng: parseFloat(focusTrack.start.lng) },
-                { lat: parseFloat(focusTrack.end.lat),   lng: parseFloat(focusTrack.end.lng) }
-            ];
+      function stepTo(i){
+        if(!currentPoints.length) return;
+        idx = Math.max(0, Math.min(currentPoints.length-1, i));
+        const p=currentPoints[idx];
+        ensureReplay();
+        const pos=new google.maps.LatLng(p.lat,p.lng);
+        marker.setPosition(pos);
+
+        // follow
+        map.panTo(pos);
+
+        // trail
+        const path=trail.getPath();
+        path.push(pos);
+        if(path.getLength()>2000) path.removeAt(0);
+
+        if(rpTime) rpTime.textContent = p.t || '—';
+        if(rpCoords) rpCoords.textContent = `Lat ${p.lat.toFixed(6)} • Lng ${p.lng.toFixed(6)}`;
+        if(rpV) rpV.textContent = `${Number(p.speed||0).toFixed(1)} km/h`;
+
+        const pct=(idx/Math.max(1,currentPoints.length-1))*100;
+        if(rpBar) rpBar.style.width = `${pct.toFixed(2)}%`;
+      }
+
+      function tick(){
+        const step = Math.max(1, Math.floor(speedMult()/2));
+        stepTo(idx + step);
+        if(idx >= currentPoints.length-1) pause();
+      }
+
+      function play(){
+        if(!currentPoints.length) return;
+        window.__replayPlaying=true;
+
+        // hide panel on play (your rule)
+        if(panelReplay) panelReplay.style.display='none';
+
+        if(timer) clearInterval(timer);
+        timer = setInterval(tick, 70);
+      }
+
+      function selectTrackForReplay(tr, latLng){
+        currentTrack=tr;
+        currentPoints=(tr.__pts || []).slice();
+        if(currentPoints.length<2) return;
+
+        stop();
+
+        if(latLng){
+          const closest=nearestPoint(latLng,currentPoints);
+          const j=currentPoints.findIndex(x=>x===closest);
+          idx = j>=0 ? j : 0;
+        } else idx=0;
+
+        stepTo(idx);
+
+        // open replay briefly
+        if(panelReplay){
+          panelReplay.style.display='block';
+          panelReplay.__schedule && panelReplay.__schedule(1400);
         }
-        focusPath.forEach(p => focusBounds.extend(p));
+      }
 
-        if (!focusBounds.isEmpty()) {
-            map.fitBounds(focusBounds, 40);
-            google.maps.event.addListenerOnce(map, "idle", () => {
-                if (map.getZoom() > 18) map.setZoom(18);
-            });
-        }
-    } else {
-        if (!bounds.isEmpty()) {
-            map.fitBounds(bounds);
-            google.maps.event.addListenerOnce(map, "idle", () => {
-                if (map.getZoom() > 17) map.setZoom(17);
-            });
-        }
+      // default pick
+      const defaultTrack = focusId ? tracks.find(x=>String(x.trajet_id)===String(focusId)) : (tracks[0]||null);
+      if(defaultTrack) selectTrackForReplay(defaultTrack);
+
+      rpPlay?.addEventListener('click', ()=>play());
+      rpPause?.addEventListener('click', ()=>pause());
+      rpStop?.addEventListener('click', ()=>stop());
+      rpPrev?.addEventListener('click', ()=>{ pause(); stepTo(idx-50); });
+      rpNext?.addEventListener('click', ()=>{ pause(); stepTo(idx+50); });
+
+      rpSlow?.addEventListener('click', ()=>{ speedIndex=Math.max(0,speedIndex-1); updateSpeedUI(); });
+      rpFast?.addEventListener('click', ()=>{ speedIndex=Math.min(speedSteps.length-1,speedIndex+1); updateSpeedUI(); });
+
+      console.log('[Trajets] bootMap OK ✅');
+    } catch (e) {
+      console.error('[Trajets] bootMap crash:', e);
     }
-
-    // init overlay texts
-    const c = map.getCenter();
-    setWhere(c.lat(), c.lng(), "Centre de la carte");
-    if (whereHint) whereHint.textContent = "Clique sur un trajet ou utilise “Ma position” pour voir les restaurants autour.";
-
-    // Option auto-localisation au chargement :
-    // locateMe();
-}
+  };
 </script>
 @endsection

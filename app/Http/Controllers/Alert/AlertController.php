@@ -10,99 +10,100 @@ use Illuminate\Support\Facades\Log;
 
 class AlertController extends Controller
 {
-      
-    
+    protected function normalizeType(?string $type): string
+    {
+        $t = strtolower(trim((string) $type));
+        if ($t === 'unauthorized') return 'offline';
+        return $t !== '' ? $t : 'unknown';
+    }
+
     protected function typeLabel(?string $type): string
     {
-        if (!$type) return 'Unknown';
+        $t = $this->normalizeType($type);
 
-        return match($type) {
-            'geofence'      => 'GeoFence Breach',
+        return match($t) {
+            'geofence'      => 'GeoFence',
             'safe_zone'     => 'Safe Zone',
             'speed'         => 'Speeding',
             'engine'        => 'Engine Alert',
-            'unauthorized'  => 'Unauthorized Time',
-
-            // 🟡 Nouveaux types
+            'offline'       => 'Offline',
             'time_zone'     => 'Time Zone',
             'stolen'        => 'Stolen / Theft',
             'low_battery'   => 'Low Battery',
-
-            default         => ucfirst(str_replace('_', ' ', $type)),
+            default         => ucfirst(str_replace('_', ' ', $t)),
         };
     }
 
+    public function index(Request $request)
+    {
+        // ✅ page HTML
+        if (!$request->expectsJson()) {
+            return view('alerts.index');
+        }
 
- public function index()
-{
-    $alerts = Alert::with(['voiture.utilisateur'])
-        ->select('alerts.*')
-        ->selectRaw("
-            CASE
-                WHEN alerts.processed = 0 AND alerts.alert_type = 'stolen' THEN 0
-                WHEN alerts.processed = 0 AND alerts.alert_type = 'low_battery' THEN 1
-                WHEN alerts.processed = 0 AND alerts.alert_type = 'geofence' THEN 2
-                WHEN alerts.processed = 0 THEN 3
-                ELSE 4
-            END AS priority
-        ")
-        ->orderBy('priority', 'asc')
-        ->orderBy('alerted_at', 'desc')
-        ->get()
-        ->map(function (Alert $a) {
-            $voiture = $a->voiture;
-            $users = collect();
+        // ✅ JSON: PLUS RÉCENT EN HAUT (pas de priorité)
+        $alerts = Alert::with(['voiture.utilisateur', 'processedBy'])
+            ->select('alerts.*')
+            ->orderBy('alerted_at', 'desc')
+            ->orderBy('id', 'desc') // sécurité si alerted_at identique
+            ->get()
+            ->map(function (Alert $a) {
+                $voiture = $a->voiture;
+                $users = collect();
 
-            if ($voiture && $voiture->utilisateur) {
-                $users = $voiture->utilisateur
-                    ->map(fn($u) => trim(($u->prenom ?? '') . ' ' . ($u->nom ?? '')))
-                    ->filter()
-                    ->values();
-            }
+                if ($voiture && $voiture->utilisateur) {
+                    $users = $voiture->utilisateur
+                        ->map(fn($u) => trim(($u->prenom ?? '') . ' ' . ($u->nom ?? '') .'     ' .  ($u->phone ?? '')))
+                        ->filter()
+                        ->values();
+                }
 
-            return [
-                'id' => $a->id,
-                'voiture_id' => $a->voiture_id,
-                'type' => $a->type, // accessor ->type => alert_type si besoin
-                'type_label' => $this->typeLabel($a->type),
-                'message' => $a->message,
-                'location' => $a->location ?? $a->message,
-                'read' => (bool) $a->read,
-                'processed' => (bool) $a->processed,
-                'processed_by' => $a->processed_by,
-                'processed_by_name' => optional($a->processedBy)->name ?? null,
-                'alerted_at_human' => $a->alerted_at
-                    ? $a->alerted_at->format('d/m/Y H:i:s')
-                    : '-',
-                'voiture' => $voiture ? [
-                    'id' => $voiture->id,
-                    'immatriculation' => $voiture->immatriculation,
-                    'marque' => $voiture->marque,
-                    'model' => $voiture->model,
-                    'couleur' => $voiture->couleur,
-                    'photo' => $voiture->photo,
-                ] : null,
-                'users_labels' => $users->isEmpty() ? null : $users->implode(', '),
-                'user_id' => $voiture?->utilisateur?->first()?->id ?? null,
-            ];
-        });
+                $rawType = $a->alert_type ?? $a->type ?? null;
+                $type = $this->normalizeType($rawType);
 
-    return response()->json([
-        'status' => 'success',
-        'data'   => $alerts,
-    ]);
-}
+                return [
+                    'id' => $a->id,
+                    'voiture_id' => $a->voiture_id,
 
+                    // ✅ type normalisé (offline même si base = unauthorized)
+                    'type' => $type,
+                    'type_label' => $this->typeLabel($type),
 
-    /**
-     * 🔥 NOUVELLE MÉTHODE POUR LOG LE POLYGON EXACTEMENT REÇU
-     */
+                    'message' => $a->message,
+                    'location' => $a->location ?? $a->message,
+
+                    'read' => (bool) $a->read,
+                    'processed' => (bool) $a->processed,
+                    'processed_by' => $a->processed_by,
+                    'processed_by_name' => optional($a->processedBy)->name ?? null,
+
+                    'alerted_at_human' => $a->alerted_at
+                        ? $a->alerted_at->format('d/m/Y H:i:s')
+                        : '-',
+
+                    'voiture' => $voiture ? [
+                        'id' => $voiture->id,
+                        'immatriculation' => $voiture->immatriculation,
+                        'marque' => $voiture->marque,
+                        'model' => $voiture->model,
+                        'couleur' => $voiture->couleur,
+                        'photo' => $voiture->photo,
+                    ] : null,
+
+                    'users_labels' => $users->isEmpty() ? null : $users->implode(', '),
+                    'user_id' => $voiture?->utilisateur?->first()?->id ?? null,
+                ];
+            });
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $alerts,
+        ]);
+    }
+
     public function receivePolygon(Request $request)
     {
-        // On récupère tout le JSON envoyé
         $polygon = $request->all();
-
-        // LOG EXACT du polygon
         Log::info('Polygon reçu depuis le frontend : ', $polygon);
 
         return response()->json([
@@ -112,29 +113,28 @@ class AlertController extends Controller
         ]);
     }
 
-  public function markAsProcessed(Request $request, $id)
-{
-    $data = $request->validate([
-        'commentaire' => ['nullable', 'string', 'max:2000'],
-    ]);
+    public function markAsProcessed(Request $request, $id)
+    {
+        $data = $request->validate([
+            'commentaire' => ['nullable', 'string', 'max:2000'],
+        ]);
 
-    $alert = Alert::findOrFail($id);
+        $alert = Alert::findOrFail($id);
 
-    $alert->processed = true;
-    $alert->processed_by = Auth::id();
-    $alert->commentaire = $data['commentaire'] ?? null; 
-    $alert->save();
+        $alert->processed = true;
+        $alert->processed_by = Auth::id();
+        $alert->commentaire = $data['commentaire'] ?? null;
+        $alert->save();
 
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Alerte marquée comme traitée',
-        'data' => [
-            'id' => $alert->id,
-            'processed' => true,
-            'processed_by' => $alert->processed_by,
-            'commentaire' => $alert->commentaire,
-        ]
-    ]);
-}
-
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Alerte marquée comme traitée',
+            'data' => [
+                'id' => $alert->id,
+                'processed' => true,
+                'processed_by' => $alert->processed_by,
+                'commentaire' => $alert->commentaire,
+            ]
+        ]);
+    }
 }

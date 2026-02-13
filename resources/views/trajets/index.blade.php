@@ -227,10 +227,9 @@
                             @endphp
 
                             <a href="{{ route('voitures.trajets', $params) }}#trajet-{{ $trajet->id }}"
-                            class="text-primary hover:text-primary-dark font-medium">
+                               class="text-primary hover:text-primary-dark font-medium">
                                 <i class="fas fa-eye mr-1"></i> Détails
                             </a>
-
                             </td>
                         </tr>
                     @empty
@@ -275,7 +274,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (startDate) startDate.value = '';
       if (endDate) endDate.value = '';
 
-      // on soumet
       form.submit();
     });
   });
@@ -288,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ----- autocomplete véhicules (ton code, avec 2 petites améliorations) -----
+  // ----- autocomplete véhicules -----
   const searchInput   = document.getElementById('vehicleSearch');
   const dropdown      = document.getElementById('vehicleDropdown');
   const resultsEl     = document.getElementById('vehicleResults');
@@ -379,7 +377,6 @@ document.addEventListener('DOMContentLoaded', () => {
     clearBtn?.classList.remove('hidden');
     closeDropdown();
 
-    // ✅ UX: dès qu’on sélectionne un véhicule => submit
     form.submit();
   }
 
@@ -417,7 +414,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const qRaw = searchInput.value || '';
     const q = normalize(qRaw);
 
-    // si l’utilisateur retape, on bascule en mode LIKE (vehicule)
     vehicleIdEl.value = '';
     vehiculeText.value = qRaw.trim();
 

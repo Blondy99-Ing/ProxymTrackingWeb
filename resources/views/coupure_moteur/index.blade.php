@@ -7,30 +7,39 @@
 <div class="space-y-4 p-0 md:p-4">
 
 {{-- Navigation Coupure Moteur --}}
+{{-- Navigation Coupure Moteur --}}
+@php
+    $authUser = auth('web')->user();
+    $isAdmin = ($authUser?->isAdmin() ?? false);
+@endphp
+
 <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-4"
-    style="border-color: var(--color-border-subtle);">
+     style="border-color: var(--color-border-subtle);">
     <div class="flex mt-4 sm:mt-0 space-x-4">
 
-        {{-- Onglet Actions --}}
+        {{-- Onglet Actions (admin + call_center) --}}
         <a href="{{ route('engine.action.index') }}"
            class="py-2 px-4 rounded-lg font-semibold transition-colors
-                {{ request()->routeIs('engine.action.index') 
-                    ? 'text-primary border-b-2 border-primary' 
+                {{ request()->routeIs('engine.action.index')
+                    ? 'text-primary border-b-2 border-primary'
                     : 'text-secondary hover:text-primary' }}">
             <i class="fas fa-power-off mr-2"></i> Actions
         </a>
 
-        {{-- Onglet Historique --}}
-        <a href="{{ route('engine.action.history') }}"
-           class="py-2 px-4 rounded-lg font-semibold transition-colors
-                {{ request()->routeIs('engine.action.history') 
-                    ? 'text-primary border-b-2 border-primary' 
-                    : 'text-secondary hover:text-primary' }}">
-            <i class="fas fa-history mr-2"></i> Historique
-        </a>
+        {{-- Onglet Historique (ADMIN ONLY) --}}
+        @if($isAdmin)
+            <a href="{{ route('engine.action.history') }}"
+               class="py-2 px-4 rounded-lg font-semibold transition-colors
+                    {{ request()->routeIs('engine.action.history')
+                        ? 'text-primary border-b-2 border-primary'
+                        : 'text-secondary hover:text-primary' }}">
+                <i class="fas fa-history mr-2"></i> Historique
+            </a>
+        @endif
 
     </div>
 </div>
+
 
 
     {{-- Liste des véhicules --}}

@@ -7,7 +7,7 @@
 <div class="space-y-8">
 
     {{-- STATS (✅ compte uniquement les NON résolues par type) --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-9 gap-6">
 
         {{-- Global ouvertes --}}
         <div class="ui-card p-5 flex items-center justify-between border-l-4 border-red-500">
@@ -44,14 +44,6 @@
             <div class="text-3xl text-blue-500 opacity-70"><i class="fas fa-tachometer-alt"></i></div>
         </div>
 
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-red-500">
-            <div>
-                <p class="text-sm text-secondary uppercase">Engine (ouvertes)</p>
-                <p class="text-3xl font-bold text-red-500" id="stat-engine">0</p>
-            </div>
-            <div class="text-3xl text-red-500 opacity-70"><i class="fas fa-exclamation-triangle"></i></div>
-        </div>
-
         <div class="ui-card p-5 flex items-center justify-between border-l-4 border-purple-500">
             <div>
                 <p class="text-sm text-secondary uppercase">Safe Zone (ouvertes)</p>
@@ -84,10 +76,11 @@
             <div class="text-3xl opacity-70" style="color:#ef4444"><i class="fas fa-battery-quarter"></i></div>
         </div>
 
+        {{-- ✅ OFFLINE : ID correct --}}
         <div class="ui-card p-5 flex items-center justify-between border-l-4 border-red-600">
             <div>
-                <p class="text-sm text-secondary uppercase">Unauthorized (ouvertes)</p>
-                <p class="text-3xl font-bold" style="color:#dc2626" id="stat-unauthorized">0</p>
+                <p class="text-sm text-secondary uppercase">Offline (ouvertes)</p>
+                <p class="text-3xl font-bold" style="color:#dc2626" id="stat-offline">0</p>
             </div>
             <div class="text-3xl opacity-70" style="color:#dc2626"><i class="fas fa-user-clock"></i></div>
         </div>
@@ -118,12 +111,11 @@
                 <option value="all">Tous les types</option>
                 <option value="geofence">GeoFence</option>
                 <option value="speed">Speed</option>
-                <option value="engine">Engine</option>
                 <option value="safe_zone">Safe Zone</option>
                 <option value="time_zone">Time Zone</option>
                 <option value="stolen">Stolen / Vol</option>
                 <option value="low_battery">Low Battery</option>
-                <option value="unauthorized">Unauthorized Time</option>
+                <option value="offline">Offline</option> {{-- ✅ FIX --}}
             </select>
 
         </div>
@@ -153,7 +145,7 @@
 
 </div>
 
-{{-- ✅ MODALE Traitement Alerte + Commentaire (mêmes classes que ton exemple) --}}
+{{-- ✅ MODALE Traitement Alerte + Commentaire --}}
 <div id="alertProcessModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black bg-opacity-50">
     <div class="bg-card rounded-2xl shadow-2xl w-full max-w-xl p-6 relative ui-card">
 
@@ -215,20 +207,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const API_INDEX = "{{ route('alerts.index') }}";
     const API_MARK_PROCESSED = "{{ url('/alerts') }}";
 
+    // ✅ Offline pris en compte + alias unauthorized (au cas où)
     const typeStyle = {
-        geofence:    { color: 'bg-orange-500', icon: 'fas fa-map-marker-alt',      label: 'GeoFence' },
-        safe_zone:   { color: 'bg-purple-500', icon: 'fas fa-shield-alt',           label: 'Safe Zone' },
-        speed:       { color: 'bg-blue-500',   icon: 'fas fa-tachometer-alt',       label: 'Speeding' },
+        geofence:    { color: 'bg-orange-500', icon: 'fas fa-map-marker-alt', label: 'GeoFence' },
+        safe_zone:   { color: 'bg-purple-500', icon: 'fas fa-shield-alt',     label: 'Safe Zone' },
+        speed:       { color: 'bg-blue-500',   icon: 'fas fa-tachometer-alt', label: 'Speeding' },
         engine:      { color: 'bg-red-500',    icon: 'fas fa-exclamation-triangle', label: 'Engine' },
-        unauthorized:{ color: 'bg-red-600',    icon: 'fas fa-user-clock',           label: 'Unauthorized Time' },
-        time_zone:   { color: 'bg-yellow-400', icon: 'fas fa-clock',                label: 'Time Zone' },
-        stolen:      { color: 'bg-red-700',    icon: 'fas fa-car-crash',            label: 'Stolen / Vol' },
-        low_battery: { color: 'bg-red-300',    icon: 'fas fa-battery-quarter',      label: 'Low Battery' },
+
+        offline:      { color: 'bg-red-600', icon: 'fas fa-user-clock', label: 'Offline' },
+        unauthorized: { color: 'bg-red-600', icon: 'fas fa-user-clock', label: 'Offline' },
+
+        time_zone:   { color: 'bg-yellow-400', icon: 'fas fa-clock',      label: 'Time Zone' },
+        stolen:      { color: 'bg-red-700',    icon: 'fas fa-car-crash',  label: 'Stolen / Vol' },
+        low_battery: { color: 'bg-red-300',    icon: 'fas fa-battery-quarter', label: 'Low Battery' },
     };
 
     let alerts = [];
 
-    // ===== Toast (compatible avec ton layout: #toast-container + CSS .toast/.show) =====
     const pushToast = (type, title, msg) => {
         const container = document.getElementById('toast-container');
         if (!container) return;
@@ -282,12 +277,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         document.getElementById('stat-geofence').textContent = countOpenType('geofence');
         document.getElementById('stat-speed').textContent = countOpenType('speed');
-        document.getElementById('stat-engine').textContent = countOpenType('engine');
         document.getElementById('stat-safezone').textContent = countOpenType('safe_zone');
         document.getElementById('stat-timezone').textContent = countOpenType('time_zone');
         document.getElementById('stat-stolen').textContent = countOpenType('stolen');
         document.getElementById('stat-lowbattery').textContent = countOpenType('low_battery');
-        document.getElementById('stat-unauthorized').textContent = countOpenType('unauthorized');
+
+        // ✅ OFFLINE
+        document.getElementById('stat-offline').textContent = countOpenType('offline');
     }
 
     function renderAlerts(rows, statsBase) {
@@ -361,7 +357,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
-        // ✅ stats = toujours sur le dataset complet (alerts), pas sur filtered
         renderAlerts(filtered, alerts);
     }
 
@@ -408,7 +403,6 @@ document.addEventListener('DOMContentLoaded', function() {
         openModal();
     };
 
-    // ✅ PATCH avec commentaire (optionnel)
     async function markAsProcessedWithComment(id, commentaire) {
         const res = await fetch(`${API_MARK_PROCESSED}/${id}/processed`, {
             method: 'PATCH',
@@ -440,14 +434,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
             closeModal();
             pushToast('success', 'Succès', "Alerte traitée.");
-            await reload(); // ✅ recharge + stats décrémentent
+            await reload();
         } catch (e) {
             console.error(e);
             pushToast('error', 'Erreur réseau', "Impossible de contacter le serveur.");
         }
     });
 
-    // ===== NAV =====
     window.goToProfile = function(userId, vehicleId) {
         if (!userId || !vehicleId) return;
         window.location.href = `/users/${userId}/profile?vehicle_id=${vehicleId}`;

@@ -797,77 +797,122 @@
         </div>
 
         <!-- Liens de Navigation -->
-        <ul class="sidebar-nav">
-            <li>
-                <a href="{{ route('dashboard') ?? '#' }}" class="{{ request()->is('dashboard') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-tachometer-alt"></i></span>
-                    <span class="title">Dashboard</span>
-                </a>
-            </li>
+       @php
+    $authUser = auth('web')->user();
+    $isAdmin = ($authUser?->isAdmin() ?? false);
+    $isCallCenter = ($authUser?->isCallCenter() ?? false);
 
-            <!-- Lien avec Sous-Menu (Module de Suivi) -->
-            <li class="nav-item">
-                <a href="#" class="dropdown-toggle" data-dropdown="tracking-menu">
-                    <span class="icon"><i class="fas fa-satellite-dish"></i></span>
-                    <span class="title">Suivi & Localisation</span>
-                    <i class="fas fa-chevron-right text-xs ml-auto"></i>
-                </a>
-                <ul class="nav-dropdown" id="tracking-menu">
-                    <li><a href="{{ route('tracking.users') ?? '#' }}"
-                            class="{{ request()->is('tracking_users') ? 'active' : '' }}">Utilisateurs</a></li>
-                    <li><a href="{{ route('villes.index') ?? '#' }}"
-                            class="{{ request()->is('villes') ? 'active' : '' }}">Villes</a></li>
-                    <li><a href="{{ route('tracking.vehicles') ?? '#' }}"
-                            class="{{ request()->is('tracking.vehicles') ? 'active' : '' }}">Véhicules</a></li>
-                    <li><a href="{{ route('trajets.index') }}"
-                            class="{{ request()->is('tracking.zones') ? 'active' : '' }}">Trajets</a></li>
-                </ul>
-            </li>
+    // ✅ autorisations
+    $canManageTracking = $isAdmin; // users, villes, véhicules (admin only)
+    $canSeeGpsSim = $isAdmin;      // admin only
+    $canSeeSettings = $isAdmin;    // admin only
+    $canCutEngine = $isAdmin || $isCallCenter; // ✅ admin + call_center
+@endphp
 
-            <li>
-                <a href="{{ route('association.index') ?? '#' }}"
-                    class="{{ request()->is('association*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-link"></i></span>
-                    <span class="title">Associations</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('alerts.view') ?? '#' }}"
-                    class="{{ request()->routeIs('alerts.index') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
-                    <span class="title">Alertes</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('gps_sim.index') ?? '#' }}" class="{{ request()->is('association*') ? 'active' : '' }}">
-                    <span class="icon">
-                        <i class="fas fa-sim-card"></i>
-                    </span>
-                    <span class="title">GPS et SIM</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('engine.action.index') ?? '#' }}" class="{{ request()->is('association*') ? 'active' : '' }}">
-                    <span class="icon">
-                        <i class="fas fa-power-off"></i>
-                    </span>
-                    <span class="title">Coupure Moteur</span>
-                </a>
-            </li>
-             <li>
-                <a href="{{ route('villes.index') ?? '#' }}" class="{{ request()->is('villes*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-city"></i></span>
-                    <span class="title">Geofence Villes</span>
-                </a>
-            </li>
+<ul class="sidebar-nav">
+    <li>
+        <a href="{{ route('dashboard') ?? '#' }}" class="{{ request()->is('/') ? 'active' : '' }}">
+            <span class="icon"><i class="fas fa-tachometer-alt"></i></span>
+            <span class="title">Dashboard</span>
+        </a>
+    </li>
+
+    <!-- Lien avec Sous-Menu (Module de Suivi) -->
+    <li class="nav-item">
+        <a href="#" class="dropdown-toggle" data-dropdown="tracking-menu">
+            <span class="icon"><i class="fas fa-satellite-dish"></i></span>
+            <span class="title">Suivi & Localisation</span>
+            <i class="fas fa-chevron-right text-xs ml-auto"></i>
+        </a>
+
+        <ul class="nav-dropdown" id="tracking-menu">
+            @if($canManageTracking)
+                <li>
+                    <a href="{{ route('tracking.users') ?? '#' }}"
+                       class="{{ request()->routeIs('tracking.users*') ? 'active' : '' }}">
+                        Utilisateurs
+                    </a>
+                </li>
+
+                <li>
+                    <a href="{{ route('villes.index') ?? '#' }}"
+                       class="{{ request()->routeIs('villes.*') ? 'active' : '' }}">
+                        Villes
+                    </a>
+                </li>
+
+                <li>
+                    <a href="{{ route('tracking.vehicles') ?? '#' }}"
+                       class="{{ request()->routeIs('tracking.vehicles*') ? 'active' : '' }}">
+                        Véhicules
+                    </a>
+                </li>
+            @endif
 
             <li>
-                <a href="#" class="{{ request()->is('association*') ? 'active' : '' }}">
-                    <span class="icon"><i class="fas fa-cog"></i></span>
-                    <span class="title">Paramètres</span>
+                <a href="{{ route('trajets.index') ?? '#' }}"
+                   class="{{ request()->routeIs('trajets.*') ? 'active' : '' }}">
+                    Trajets
                 </a>
             </li>
         </ul>
+    </li>
+
+    <li>
+        <a href="{{ route('association.index') ?? '#' }}"
+           class="{{ request()->is('association*') ? 'active' : '' }}">
+            <span class="icon"><i class="fas fa-link"></i></span>
+            <span class="title">Associations</span>
+        </a>
+    </li>
+
+    <li>
+        <a href="{{ route('alerts.view') ?? '#' }}"
+           class="{{ request()->routeIs('alerts.*') ? 'active' : '' }}">
+            <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
+            <span class="title">Alertes</span>
+        </a>
+    </li>
+
+    @if($canSeeGpsSim)
+        <li>
+            <a href="{{ route('gps_sim.index') ?? '#' }}"
+               class="{{ request()->routeIs('gps_sim.*') ? 'active' : '' }}">
+                <span class="icon"><i class="fas fa-sim-card"></i></span>
+                <span class="title">GPS et SIM</span>
+            </a>
+        </li>
+    @endif
+
+    {{-- ✅ Coupure Moteur : admin + call_center --}}
+    @if($canCutEngine)
+        <li>
+            <a href="{{ route('engine.action.index') ?? '#' }}"
+               class="{{ request()->routeIs('engine.action.*') ? 'active' : '' }}">
+                <span class="icon"><i class="fas fa-power-off"></i></span>
+                <span class="title">Coupure Moteur</span>
+            </a>
+        </li>
+    @endif
+
+    @if($isAdmin)
+        <li>
+            <a href="{{ route('villes.index') ?? '#' }}"
+               class="{{ request()->routeIs('villes.*') ? 'active' : '' }}">
+                <span class="icon"><i class="fas fa-city"></i></span>
+                <span class="title">Geofence Villes</span>
+            </a>
+        </li>
+
+        <li>
+            <a href="#"
+               class="{{ request()->is('settings*') ? 'active' : '' }}">
+                <span class="icon"><i class="fas fa-cog"></i></span>
+                <span class="title">Paramètres</span>
+            </a>
+        </li>
+    @endif
+</ul>
 
         <!-- Section Pied de page de la Sidebar (Déconnexion) -->
         <div class="absolute bottom-0 left-0 w-full p-2 border-t border-solid border-border-subtle"

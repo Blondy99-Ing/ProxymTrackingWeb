@@ -81,4 +81,20 @@ public function role()
     return $this->belongsTo(\App\Models\Role::class);
 }
 
+
+public function hasRole(string $slug): bool
+{
+    return $this->role?->slug === $slug;
+}
+
+public function isAdmin(): bool
+{
+    return $this->hasRole('admin');
+}
+
+public function isCallCenter(): bool
+{
+    return $this->hasRole('call_center');
+}
+
 }

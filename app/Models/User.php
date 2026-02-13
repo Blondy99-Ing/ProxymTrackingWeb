@@ -7,6 +7,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\AssociationChauffeurVoiturePartner;
+use App\Models\HistoriqueAssociationChauffeurVoiturePartner;
+
 
 
 
@@ -33,6 +37,8 @@ class User extends Authenticatable
         'photo',
         'password',
         'role_id',
+        'partner_id',
+        'created_by',
     ];
 
 
@@ -87,5 +93,19 @@ public function role()
 {
     return $this->belongsTo(Role::class);
 }
+
+
+
+public function affectationVoitureActuellePartner(): HasMany
+{
+    return $this->hasMany(AssociationChauffeurVoiturePartner::class, 'chauffeur_id');
+}
+
+public function historiqueAffectationsVoituresPartner(): HasMany
+{
+    return $this->hasMany(HistoriqueAssociationChauffeurVoiturePartner::class, 'chauffeur_id')
+        ->orderByDesc('start_at');
+}
+
 
 }

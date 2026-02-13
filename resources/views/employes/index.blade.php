@@ -70,6 +70,7 @@
                             </td>
 
                             <td class="space-x-2 whitespace-nowrap">
+                               
                                 {{-- Modifier --}}
                                 <button
                                     class="text-yellow-500 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-200 p-2 openEditModalBtn"
@@ -97,6 +98,7 @@
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </form>
+                            
                             </td>
                         </tr>
                     @endforeach

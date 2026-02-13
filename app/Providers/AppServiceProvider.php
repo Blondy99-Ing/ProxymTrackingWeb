@@ -3,7 +3,9 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use App\Models\Alert;
 use App\Models\Location;
+use App\Observers\AlertObserver;
 use App\Observers\LocationObserver;
 
 class AppServiceProvider extends ServiceProvider
@@ -13,7 +15,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(\App\Services\GoogleRoadsService::class);
+        $this->app->singleton(\App\Services\TrackOptimizer::class);
     }
 
     /**
@@ -33,6 +36,7 @@ class AppServiceProvider extends ServiceProvider
             View::share('agence', $agence);
         }
 
+        Alert::observe(AlertObserver::class);
         Location::observe(LocationObserver::class);
     }
 }
