@@ -2,23 +2,15 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
 
-
 class Employe extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use   HasFactory, Notifiable;
+    use HasFactory, Notifiable;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
     protected $fillable = [
         'unique_id',
         'nom',
@@ -32,34 +24,13 @@ class Employe extends Authenticatable
         'role_id',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
+    protected $appends = ['photo_url'];
 
-
-
-//gestion des image des employes
-protected $appends = ['photo_url'];
-
-public function getPhotoUrlAttribute(): ?string
-{
-    if (!$this->photo) return null;
-    return Storage::disk('public')->url($this->photo); // => /storage/....
-}
-
-
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -68,33 +39,118 @@ public function getPhotoUrlAttribute(): ?string
         ];
     }
 
+    /* =========================
+     * Helpers (Unicode safe)
+     * ========================= */
+    protected function toUpper(?string $v): ?string
+    {
+        $v = is_string($v) ? trim($v) : null;
+        if ($v === null || $v === '') return null;
+        return mb_strtoupper($v, 'UTF-8');
+    }
 
+    protected function toUcFirstLowerRest(?string $v): ?string
+    {
+        $v = is_string($v) ? trim($v) : null;
+        if ($v === null || $v === '') return null;
 
-  public function commands()
-{
-    return $this->hasMany(Commande::class);
-}
+        $lower = mb_strtolower($v, 'UTF-8');
+        $first = mb_substr($lower, 0, 1, 'UTF-8');
+        $rest  = mb_substr($lower, 1, null, 'UTF-8');
 
+        return mb_strtoupper($first, 'UTF-8') . $rest;
+    }
 
-public function role()
-{
-    return $this->belongsTo(\App\Models\Role::class);
-}
+    /* =========================
+     * Mutators (POST/PUT/PATCH)
+     * ========================= */
+    public function setUniqueIdAttribute($value): void
+    {
+        $this->attributes['unique_id'] = $this->toUpper($value);
+    }
 
+    public function setNomAttribute($value): void
+    {
+        $this->attributes['nom'] = $this->toUpper($value);
+    }
 
-public function hasRole(string $slug): bool
-{
-    return $this->role?->slug === $slug;
-}
+    public function setPrenomAttribute($value): void
+    {
+        $this->attributes['prenom'] = $this->toUcFirstLowerRest($value);
+    }
 
-public function isAdmin(): bool
-{
-    return $this->hasRole('admin');
-}
+    public function setVilleAttribute($value): void
+    {
+        $this->attributes['ville'] = $this->toUcFirstLowerRest($value);
+    }
 
-public function isCallCenter(): bool
-{
-    return $this->hasRole('call_center');
-}
+    public function setQuartierAttribute($value): void
+    {
+        $this->attributes['quartier'] = $this->toUcFirstLowerRest($value);
+    }
 
+    /* =========================
+     * Accessors (GET/JSON)
+     * ========================= */
+    public function getUniqueIdAttribute($value): ?string
+    {
+        return $this->toUpper($value);
+    }
+
+    public function getNomAttribute($value): ?string
+    {
+        return $this->toUpper($value);
+    }
+
+    public function getPrenomAttribute($value): ?string
+    {
+        return $this->toUcFirstLowerRest($value);
+    }
+
+    public function getVilleAttribute($value): ?string
+    {
+        return $this->toUcFirstLowerRest($value);
+    }
+
+    public function getQuartierAttribute($value): ?string
+    {
+        return $this->toUcFirstLowerRest($value);
+    }
+
+    /* =========================
+     * Photo url
+     * ========================= */
+    public function getPhotoUrlAttribute(): ?string
+    {
+        if (!$this->photo) return null;
+        return Storage::disk('public')->url($this->photo);
+    }
+
+    /* =========================
+     * Relations & Roles
+     * ========================= */
+    public function commands()
+    {
+        return $this->hasMany(Commande::class);
+    }
+
+    public function role()
+    {
+        return $this->belongsTo(\App\Models\Role::class);
+    }
+
+    public function hasRole(string $slug): bool
+    {
+        return $this->role?->slug === $slug;
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->hasRole('admin');
+    }
+
+    public function isCallCenter(): bool
+    {
+        return $this->hasRole('call_center');
+    }
 }

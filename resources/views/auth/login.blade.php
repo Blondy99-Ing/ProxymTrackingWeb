@@ -42,6 +42,28 @@
 
 /* Modal */
 .modal-hidden { display:none; }
+
+
+
+
+/* Header premium (comme partenaire) */
+.brand-pill{
+  background: rgba(245,130,32,0.12);
+  color: var(--color-primary);
+  border: 1px solid rgba(245,130,32,0.25);
+}
+
+.signature-pill{
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--color-input-border);
+  color: var(--color-secondary-text);
+}
+
+/* Focus orange plus “glow” (si tu veux plus fort que 0 0 0 3px) */
+.input-style:focus{
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 4px rgba(245,130,32,0.28), 0 10px 22px rgba(245,130,32,0.20) !important;
+}
 </style>
 </head>
 
@@ -72,17 +94,44 @@
     <div class="card-shadow p-8 md:p-10 rounded-xl border">
 
         <!-- En-tête (dynamique) -->
-        <header class="text-center mb-8">
-            <div class="font-orbitron text-xl md:text-2xl font-extrabold">
-                PROXYM <span class="text-primary">TRACKING</span>
-            </div>
-            <h1 id="pageTitle" class="font-orbitron text-2xl md:text-3xl font-bold mt-4">
-                {{ $isForgot ? 'Mot de passe oublié' : 'Connexion Employé' }}
-            </h1>
-            <p id="pageSubtitle" class="text-sm text-secondary mt-1">
-                {{ $isForgot ? 'Saisissez votre Email ou Téléphone pour recevoir un code.' : 'Connectez-vous pour accéder à votre espace.' }}
-            </p>
-        </header>
+       <header class="text-center mb-8">
+  <!-- Logo -->
+  <div class="mx-auto mb-4 w-20 h-20 md:w-24 md:h-24 rounded-2xl flex items-center justify-center"
+       style="background: rgba(245,130,32,0.12); border:1px solid rgba(245,130,32,0.28); box-shadow: 0 12px 30px rgba(245,130,32,0.18);">
+    <img src="{{ asset('assets/images/logo_tracking.png') }}"
+         alt="Proxym Tracking"
+         class="w-14 h-14 md:w-16 md:h-16 object-contain">
+  </div>
+
+  <!-- Brand -->
+  <h1 class="font-orbitron font-extrabold tracking-wide leading-none">
+    <span class="text-primary text-3xl md:text-3xl">Fleetra</span>
+  </h1>
+
+  <!-- Badges -->
+  <div class="mt-3 flex items-center justify-center gap-2 flex-wrap">
+    <span class="text-xs md:text-sm px-3 py-1 rounded-full signature-pill">
+      By <span class="font-semibold">Proxym Group</span>
+    </span>
+
+    <span class="text-xs md:text-sm px-3 py-1 rounded-full brand-pill">
+      Espace Employé
+    </span>
+  </div>
+
+
+
+  <p id="pageSubtitle" class="text-sm text-secondary mt-2">
+    {{ $isForgot
+        ? 'Saisissez votre email ou téléphone pour recevoir un code de vérification.'
+        : 'Connectez-vous pour accéder à votre espace de gestion et suivre l’activité en temps réel.' }}
+  </p>
+
+  <!-- Divider -->
+  <div class="mt-6 mx-auto h-[2px] w-24 rounded-full"
+       style="background: linear-gradient(90deg, rgba(245,130,32,0), rgba(245,130,32,0.9), rgba(245,130,32,0));">
+  </div>
+</header>
 
         <!-- Messages -->
         @if(session('status'))
@@ -141,13 +190,6 @@
                     @enderror
                 </div>
 
-                <div class="block mt-4">
-                    <label for="remember_me" class="inline-flex items-center">
-                        <input id="remember_me" type="checkbox" name="remember"
-                               class="rounded border-gray-300 text-primary shadow-sm focus:ring-primary h-4 w-4">
-                        <span class="ms-2 text-sm text-secondary">Se souvenir de moi</span>
-                    </label>
-                </div>
 
                 <div class="flex items-center justify-between mt-6 pt-2">
                     <button type="button"

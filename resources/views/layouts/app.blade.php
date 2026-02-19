@@ -548,25 +548,34 @@
 
 
     .brand {
-        width: 80%;
-        height: 130px;
+        height: 190px;
+        display: flex;
         align-items: center;
         justify-content: center;
-        position: relative;
     }
 
     .brand-logo {
-        width: 100%;
-        height: auto;
-        position: absolute;
-        padding-top: 50px;
-
-        padding-bottom: 50px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        text-align: center;
     }
 
+    /* image */
+    .brand-logo img {
+        height: 90px;
+        width: auto;
+        display: block;
+    }
 
-
-
+    /* texte */
+    .brand-logo h1 {
+        margin: 0;
+        font-size: 2rem;
+        line-height: 1.1;
+    }
 
 
 
@@ -768,7 +777,56 @@
             0 18px 55px rgba(0, 0, 0, .45),
             0 2px 12px rgba(0, 0, 0, .35);
     }
+
+
+
+
+
+    /* ✅ Dashboard stats sticky */
+.dashboard-stats-sticky{
+    position: sticky;
+    top: 5rem; /* hauteur de ta navbar (5rem chez toi) */
+    z-index: 12; /* au-dessus du contenu, en dessous des menus */
+    padding: .75rem 0;
+
+    /* fond + effet glass léger pour que ça reste lisible */
+    background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+
+    /* séparation visuelle */
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+/* ✅ optionnel: petit espace sous le sticky */
+.dashboard-stats-sticky + *{
+    scroll-margin-top: calc(5rem + 80px);
+}
+
+
+
+
+/* ✅ Alerts stats sticky (comme dashboard) */
+.alerts-stats-sticky{
+    position: sticky;
+    top: 5rem;                 /* hauteur navbar */
+    z-index: 12;
+    padding: .75rem 0;
+
+    background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+/* si jamais sticky ne marche pas à cause d'un parent overflow */
+.main-content, .page-content{
+    overflow: visible !important;
+}
     </style>
+
+
+
+
+
 
     <!-- DataTables CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
@@ -785,6 +843,10 @@
             <div class="brand-logo">
                 <div class="logo-text">
                     <img src="{{ asset('assets/images/logo_tracking.png') }}" alt="">
+
+                </div>
+                <div class="logo-text">
+                    <h1>Fleetra</h1>
                 </div>
             </div>
         </div>
@@ -797,122 +859,121 @@
         </div>
 
         <!-- Liens de Navigation -->
-       @php
-    $authUser = auth('web')->user();
-    $isAdmin = ($authUser?->isAdmin() ?? false);
-    $isCallCenter = ($authUser?->isCallCenter() ?? false);
+        @php
+        $authUser = auth('web')->user();
+        $isAdmin = ($authUser?->isAdmin() ?? false);
+        $isCallCenter = ($authUser?->isCallCenter() ?? false);
 
-    // ✅ autorisations
-    $canManageTracking = $isAdmin; // users, villes, véhicules (admin only)
-    $canSeeGpsSim = $isAdmin;      // admin only
-    $canSeeSettings = $isAdmin;    // admin only
-    $canCutEngine = $isAdmin || $isCallCenter; // ✅ admin + call_center
-@endphp
+        // ✅ autorisations
+        $canManageTracking = $isAdmin; // users, villes, véhicules (admin only)
+        $canSeeGpsSim = $isAdmin; // admin only
+        $canSeeSettings = $isAdmin; // admin only
+        $canCutEngine = $isAdmin || $isCallCenter; // ✅ admin + call_center
+        @endphp
 
-<ul class="sidebar-nav">
-    <li>
-        <a href="{{ route('dashboard') ?? '#' }}" class="{{ request()->is('/') ? 'active' : '' }}">
-            <span class="icon"><i class="fas fa-tachometer-alt"></i></span>
-            <span class="title">Dashboard</span>
-        </a>
-    </li>
-
-    <!-- Lien avec Sous-Menu (Module de Suivi) -->
-    <li class="nav-item">
-        <a href="#" class="dropdown-toggle" data-dropdown="tracking-menu">
-            <span class="icon"><i class="fas fa-satellite-dish"></i></span>
-            <span class="title">Suivi & Localisation</span>
-            <i class="fas fa-chevron-right text-xs ml-auto"></i>
-        </a>
-
-        <ul class="nav-dropdown" id="tracking-menu">
-            @if($canManageTracking)
-                <li>
-                    <a href="{{ route('tracking.users') ?? '#' }}"
-                       class="{{ request()->routeIs('tracking.users*') ? 'active' : '' }}">
-                        Utilisateurs
-                    </a>
-                </li>
-
-                <li>
-                    <a href="{{ route('villes.index') ?? '#' }}"
-                       class="{{ request()->routeIs('villes.*') ? 'active' : '' }}">
-                        Villes
-                    </a>
-                </li>
-
-                <li>
-                    <a href="{{ route('tracking.vehicles') ?? '#' }}"
-                       class="{{ request()->routeIs('tracking.vehicles*') ? 'active' : '' }}">
-                        Véhicules
-                    </a>
-                </li>
-            @endif
-
+        <ul class="sidebar-nav">
             <li>
-                <a href="{{ route('trajets.index') ?? '#' }}"
-                   class="{{ request()->routeIs('trajets.*') ? 'active' : '' }}">
-                    Trajets
+                <a href="{{ route('dashboard') ?? '#' }}" class="{{ request()->is('/') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-tachometer-alt"></i></span>
+                    <span class="title">Dashboard</span>
                 </a>
             </li>
+
+            <!-- Lien avec Sous-Menu (Module de Suivi) -->
+            <li class="nav-item">
+                <a href="#" class="dropdown-toggle" data-dropdown="tracking-menu">
+                    <span class="icon"><i class="fas fa-satellite-dish"></i></span>
+                    <span class="title">Suivi & Localisation</span>
+                    <i class="fas fa-chevron-right text-xs ml-auto"></i>
+                </a>
+
+                <ul class="nav-dropdown" id="tracking-menu">
+                    @if($canManageTracking)
+                    <li>
+                        <a href="{{ route('tracking.users') ?? '#' }}"
+                            class="{{ request()->routeIs('tracking.users*') ? 'active' : '' }}">
+                            Utilisateurs
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="{{ route('villes.index') ?? '#' }}"
+                            class="{{ request()->routeIs('villes.*') ? 'active' : '' }}">
+                            Villes
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="{{ route('tracking.vehicles') ?? '#' }}"
+                            class="{{ request()->routeIs('tracking.vehicles*') ? 'active' : '' }}">
+                            Véhicules
+                        </a>
+                    </li>
+                    @endif
+
+                    <li>
+                        <a href="{{ route('trajets.index') ?? '#' }}"
+                            class="{{ request()->routeIs('trajets.*') ? 'active' : '' }}">
+                            Trajets
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            <li>
+                <a href="{{ route('association.index') ?? '#' }}"
+                    class="{{ request()->is('association*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-link"></i></span>
+                    <span class="title">Associations</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="{{ route('alerts.view') ?? '#' }}"
+                    class="{{ request()->routeIs('alerts.*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
+                    <span class="title">Alertes</span>
+                </a>
+            </li>
+
+            @if($canSeeGpsSim)
+            <li>
+                <a href="{{ route('gps_sim.index') ?? '#' }}"
+                    class="{{ request()->routeIs('gps_sim.*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-sim-card"></i></span>
+                    <span class="title">GPS et SIM</span>
+                </a>
+            </li>
+            @endif
+
+            {{-- ✅ Coupure Moteur : admin + call_center --}}
+            @if($canCutEngine)
+            <li>
+                <a href="{{ route('engine.action.index') ?? '#' }}"
+                    class="{{ request()->routeIs('engine.action.*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-power-off"></i></span>
+                    <span class="title">Coupure Moteur</span>
+                </a>
+            </li>
+            @endif
+
+            @if($isAdmin)
+            <li>
+                <a href="{{ route('villes.index') ?? '#' }}"
+                    class="{{ request()->routeIs('villes.*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-city"></i></span>
+                    <span class="title">Geofence Villes</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="#" class="{{ request()->is('settings*') ? 'active' : '' }}">
+                    <span class="icon"><i class="fas fa-cog"></i></span>
+                    <span class="title">Paramètres</span>
+                </a>
+            </li>
+            @endif
         </ul>
-    </li>
-
-    <li>
-        <a href="{{ route('association.index') ?? '#' }}"
-           class="{{ request()->is('association*') ? 'active' : '' }}">
-            <span class="icon"><i class="fas fa-link"></i></span>
-            <span class="title">Associations</span>
-        </a>
-    </li>
-
-    <li>
-        <a href="{{ route('alerts.view') ?? '#' }}"
-           class="{{ request()->routeIs('alerts.*') ? 'active' : '' }}">
-            <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
-            <span class="title">Alertes</span>
-        </a>
-    </li>
-
-    @if($canSeeGpsSim)
-        <li>
-            <a href="{{ route('gps_sim.index') ?? '#' }}"
-               class="{{ request()->routeIs('gps_sim.*') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-sim-card"></i></span>
-                <span class="title">GPS et SIM</span>
-            </a>
-        </li>
-    @endif
-
-    {{-- ✅ Coupure Moteur : admin + call_center --}}
-    @if($canCutEngine)
-        <li>
-            <a href="{{ route('engine.action.index') ?? '#' }}"
-               class="{{ request()->routeIs('engine.action.*') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-power-off"></i></span>
-                <span class="title">Coupure Moteur</span>
-            </a>
-        </li>
-    @endif
-
-    @if($isAdmin)
-        <li>
-            <a href="{{ route('villes.index') ?? '#' }}"
-               class="{{ request()->routeIs('villes.*') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-city"></i></span>
-                <span class="title">Geofence Villes</span>
-            </a>
-        </li>
-
-        <li>
-            <a href="#"
-               class="{{ request()->is('settings*') ? 'active' : '' }}">
-                <span class="icon"><i class="fas fa-cog"></i></span>
-                <span class="title">Paramètres</span>
-            </a>
-        </li>
-    @endif
-</ul>
 
         <!-- Section Pied de page de la Sidebar (Déconnexion) -->
         <div class="absolute bottom-0 left-0 w-full p-2 border-t border-solid border-border-subtle"
@@ -1056,20 +1117,15 @@
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-   <script>
-  // ✅ évite les erreurs sur les pages qui n'ont pas de carte
-  window.initMap = window.initMap || function () {
-    window.__gmapsReady = true;
-    window.dispatchEvent(new Event('gmaps:ready'));
-  };
-</script>
+    <script>
+    // ✅ évite les erreurs sur les pages qui n'ont pas de carte
+    window.initMap = window.initMap || function() {
+        window.__gmapsReady = true;
+        window.dispatchEvent(new Event('gmaps:ready'));
+    };
+    </script>
 
-<script
-  id="gmaps-js"
-  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo&libraries=geometry&loading=async&callback=initMap"
-  async defer>
-</script>
-
+ 
 
     <script>
     $(function() { // équivalent de $(document).ready()

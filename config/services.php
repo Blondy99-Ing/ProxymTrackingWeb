@@ -62,4 +62,8 @@ return [
         'retries' => (int) env('GOOGLE_ROADS_RETRIES', 2),
     ],
 
+     'google_maps' => [
+        'key' => env('GOOGLE_MAPS_KEY'),
+    ],
+
 ];

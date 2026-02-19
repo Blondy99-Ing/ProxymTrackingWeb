@@ -6,85 +6,138 @@
 @section('content')
 <div class="space-y-8">
 
-    {{-- STATS (✅ compte uniquement les NON résolues par type) --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-9 gap-6">
+    {{-- ✅ STATS STICKY (comme dashboard) --}}
+    <div class="alerts-stats-sticky">
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3">
 
-        {{-- Global ouvertes --}}
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-red-500">
-            <div>
-                <p class="text-sm text-secondary uppercase">Alertes Ouvertes</p>
-                <p class="text-3xl font-bold text-red-500" id="stat-open">0</p>
+            {{-- Global ouvertes --}}
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                <span class="absolute left-0 top-0 h-full w-1 bg-red-500"></span>
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Alertes Ouvertes</p>
+                    <p class="text-xl font-bold mt-1 text-red-500" id="stat-open">0</p>
+                </div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-red-100 text-red-700">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </span>
+                </div>
             </div>
-            <div class="text-3xl text-red-500 opacity-70"><i class="fas fa-exclamation-circle"></i></div>
-        </div>
 
-        {{-- Résolues (info globale) --}}
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-green-500">
-            <div>
-                <p class="text-sm text-secondary uppercase">Résolues</p>
-                <p class="text-3xl font-bold text-green-500" id="stat-resolved">0</p>
+            {{-- Résolues --}}
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                <span class="absolute left-0 top-0 h-full w-1 bg-green-500"></span>
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Résolues</p>
+                    <p class="text-xl font-bold mt-1 text-green-500" id="stat-resolved">0</p>
+                </div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-100 text-green-700">
+                        <i class="fas fa-check-double"></i>
+                    </span>
+                </div>
             </div>
-            <div class="text-3xl text-green-500 opacity-70"><i class="fas fa-check-double"></i></div>
-        </div>
 
-        {{-- Types (NON résolues seulement) --}}
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-orange-500">
-            <div>
-                <p class="text-sm text-secondary uppercase">Geofence (ouvertes)</p>
-                <p class="text-3xl font-bold text-orange-500" id="stat-geofence">0</p>
+            {{-- Geofence (ouvertes) --}}
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                <span class="absolute left-0 top-0 h-full w-1 bg-orange-500"></span>
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Geofence (ouvertes)</p>
+                    <p class="text-xl font-bold mt-1" style="color:#f97316" id="stat-geofence">0</p>
+                </div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-orange-100 text-orange-700">
+                        <i class="fas fa-route"></i>
+                    </span>
+                </div>
             </div>
-            <div class="text-3xl text-orange-500 opacity-70"><i class="fas fa-route"></i></div>
-        </div>
 
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-blue-500">
-            <div>
-                <p class="text-sm text-secondary uppercase">Vitesse (ouvertes)</p>
-                <p class="text-3xl font-bold text-blue-500" id="stat-speed">0</p>
+            {{-- Vitesse (ouvertes) --}}
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                <span class="absolute left-0 top-0 h-full w-1 bg-blue-500"></span>
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Vitesse (ouvertes)</p>
+                    <p class="text-xl font-bold mt-1 text-blue-500" id="stat-speed">0</p>
+                </div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 text-blue-700">
+                        <i class="fas fa-tachometer-alt"></i>
+                    </span>
+                </div>
             </div>
-            <div class="text-3xl text-blue-500 opacity-70"><i class="fas fa-tachometer-alt"></i></div>
-        </div>
 
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-purple-500">
-            <div>
-                <p class="text-sm text-secondary uppercase">Safe Zone (ouvertes)</p>
-                <p class="text-3xl font-bold text-purple-500" id="stat-safezone">0</p>
+            {{-- Safe Zone (ouvertes) --}}
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                <span class="absolute left-0 top-0 h-full w-1 bg-purple-500"></span>
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Safe Zone (ouvertes)</p>
+                    <p class="text-xl font-bold mt-1 text-purple-500" id="stat-safezone">0</p>
+                </div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-purple-100 text-purple-700">
+                        <i class="fas fa-shield-alt"></i>
+                    </span>
+                </div>
             </div>
-            <div class="text-3xl text-purple-500 opacity-70"><i class="fas fa-shield-alt"></i></div>
-        </div>
 
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-yellow-400">
-            <div>
-                <p class="text-sm text-secondary uppercase">Time Zone (ouvertes)</p>
-                <p class="text-3xl font-bold" style="color:#f59e0b" id="stat-timezone">0</p>
+            {{-- Time Zone (ouvertes) --}}
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                <span class="absolute left-0 top-0 h-full w-1 bg-yellow-400"></span>
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Time Zone (ouvertes)</p>
+                    <p class="text-xl font-bold mt-1" style="color:#f59e0b" id="stat-timezone">0</p>
+                </div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-yellow-100" style="color:#f59e0b">
+                        <i class="fas fa-clock"></i>
+                    </span>
+                </div>
             </div>
-            <div class="text-3xl opacity-70" style="color:#f59e0b"><i class="fas fa-clock"></i></div>
-        </div>
 
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-red-700">
-            <div>
-                <p class="text-sm text-secondary uppercase">Vol (ouvertes)</p>
-                <p class="text-3xl font-bold" style="color:#b91c1c" id="stat-stolen">0</p>
+            {{-- Vol (ouvertes) --}}
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                <span class="absolute left-0 top-0 h-full w-1 bg-red-700"></span>
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Vol (ouvertes)</p>
+                    <p class="text-xl font-bold mt-1" style="color:#b91c1c" id="stat-stolen">0</p>
+                </div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg"
+                        style="background:rgba(185,28,28,.12);color:#b91c1c">
+                        <i class="fas fa-car-crash"></i>
+                    </span>
+                </div>
             </div>
-            <div class="text-3xl opacity-70" style="color:#b91c1c"><i class="fas fa-car-crash"></i></div>
-        </div>
 
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-red-300">
-            <div>
-                <p class="text-sm text-secondary uppercase">Low Battery (ouvertes)</p>
-                <p class="text-3xl font-bold" style="color:#ef4444" id="stat-lowbattery">0</p>
+            {{-- Low Battery (ouvertes) --}}
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                <span class="absolute left-0 top-0 h-full w-1 bg-red-300"></span>
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Low Battery (ouvertes)</p>
+                    <p class="text-xl font-bold mt-1" style="color:#ef4444" id="stat-lowbattery">0</p>
+                </div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-red-100 text-red-600">
+                        <i class="fas fa-battery-quarter"></i>
+                    </span>
+                </div>
             </div>
-            <div class="text-3xl opacity-70" style="color:#ef4444"><i class="fas fa-battery-quarter"></i></div>
-        </div>
 
-        {{-- ✅ OFFLINE : ID correct --}}
-        <div class="ui-card p-5 flex items-center justify-between border-l-4 border-red-600">
-            <div>
-                <p class="text-sm text-secondary uppercase">Offline (ouvertes)</p>
-                <p class="text-3xl font-bold" style="color:#dc2626" id="stat-offline">0</p>
+            {{-- Offline (ouvertes) --}}
+            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                <span class="absolute left-0 top-0 h-full w-1 bg-red-600"></span>
+                <div class="pl-2">
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Offline (ouvertes)</p>
+                    <p class="text-xl font-bold mt-1" style="color:#dc2626" id="stat-offline">0</p>
+                </div>
+                <div class="text-xl opacity-60">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-red-100 text-red-600">
+                        <i class="fas fa-user-clock"></i>
+                    </span>
+                </div>
             </div>
-            <div class="text-3xl opacity-70" style="color:#dc2626"><i class="fas fa-user-clock"></i></div>
-        </div>
 
+        </div>
     </div>
 
     {{-- TABLE --}}
@@ -101,11 +154,11 @@
         </div>
 
         <div class="flex flex-wrap gap-4 mt-4 mb-4 items-center border-b pb-4"
-             style="border-color: var(--color-border-subtle);">
+            style="border-color: var(--color-border-subtle);">
 
             <input id="alertSearch"
-                   class="ui-input-style max-w-sm"
-                   placeholder="Recherche véhicule / lieu / utilisateur..." />
+                class="ui-input-style max-w-sm"
+                placeholder="Recherche véhicule / lieu / utilisateur..." />
 
             <select id="alertTypeFilter" class="ui-select-style">
                 <option value="all">Tous les types</option>
@@ -115,7 +168,7 @@
                 <option value="time_zone">Time Zone</option>
                 <option value="stolen">Stolen / Vol</option>
                 <option value="low_battery">Low Battery</option>
-                <option value="offline">Offline</option> {{-- ✅ FIX --}}
+                <option value="offline">Offline</option>
             </select>
 
         </div>
@@ -182,9 +235,9 @@
         <div class="mt-4">
             <label class="block text-sm font-medium text-secondary mb-1">Commentaire (optionnel)</label>
             <textarea id="alertModalComment"
-                      class="ui-textarea-style"
-                      rows="4"
-                      placeholder="Ex: Appel client, vérification GPS, intervention terrain…"></textarea>
+                class="ui-textarea-style"
+                rows="4"
+                placeholder="Ex: Appel client, vérification GPS, intervention terrain…"></textarea>
         </div>
 
         <div class="mt-6 flex justify-end gap-3 border-t pt-4 border-border-subtle">
@@ -200,6 +253,26 @@
 </div>
 @endsection
 
+@push('styles')
+<style>
+/* ✅ Stats sticky pour alerts (collé sous navbar) */
+.alerts-stats-sticky{
+    position: sticky;
+    top: 5rem; /* navbar height */
+    z-index: 12;
+    padding: .75rem 0;
+    background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+/* sticky peut être cassé si un parent a overflow */
+.main-content, .page-content{
+    overflow: visible !important;
+}
+</style>
+@endpush
+
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -207,7 +280,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const API_INDEX = "{{ route('alerts.index') }}";
     const API_MARK_PROCESSED = "{{ url('/alerts') }}";
 
-    // ✅ Offline pris en compte + alias unauthorized (au cas où)
     const typeStyle = {
         geofence:    { color: 'bg-orange-500', icon: 'fas fa-map-marker-alt', label: 'GeoFence' },
         safe_zone:   { color: 'bg-purple-500', icon: 'fas fa-shield-alt',     label: 'Safe Zone' },
@@ -281,8 +353,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('stat-timezone').textContent = countOpenType('time_zone');
         document.getElementById('stat-stolen').textContent = countOpenType('stolen');
         document.getElementById('stat-lowbattery').textContent = countOpenType('low_battery');
-
-        // ✅ OFFLINE
         document.getElementById('stat-offline').textContent = countOpenType('offline');
     }
 
