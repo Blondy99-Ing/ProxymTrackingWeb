@@ -12,30 +12,52 @@ class DashboardWebhookController extends Controller
     public function refresh(Request $request)
     {
         // ✅ Protection par secret (header)
-        $secret = (string) $request->header('X-DASH-SECRET');
-        $expected = (string) config('services.dashboard_webhook_secret');
+        $secret   = (string) $request->header('X-INTERNAL-SECRET');
+
+        // ✅ CORRECTION: services.php => services.internal.webhook_secret
+        $expected = (string) config('services.internal.webhook_secret');
 
         if (!$expected || !$secret || !hash_equals($expected, $secret)) {
             return response()->json(['ok' => false, 'message' => 'Unauthorized'], 401);
         }
 
-        // what = all | stats | fleet | alerts
-        $what = $request->input('what', 'all');
+        // what = all | stats | fleet | alerts | alerts_top
+        $what = (string) $request->input('what', 'all');
+
+        if ($what === 'alerts_top') {
+            $alerts = $this->cache->rebuildAlerts(10);
+            return response()->json([
+                'ok' => true,
+                'what' => 'alerts_top',
+                'alerts_count' => count($alerts),
+            ]);
+        }
 
         if ($what === 'alerts') {
             $alerts = $this->cache->rebuildAlerts(10);
-            $stats  = $this->cache->rebuildStats(); // pour alertsCount + alertsByType
-            return response()->json(['ok' => true, 'what' => 'alerts', 'alerts_count' => count($alerts), 'stats' => $stats]);
+            return response()->json([
+                'ok' => true,
+                'what' => 'alerts',
+                'alerts_count' => count($alerts),
+            ]);
         }
 
         if ($what === 'fleet') {
             $fleet = $this->cache->rebuildFleet();
-            return response()->json(['ok' => true, 'what' => 'fleet', 'fleet_count' => count($fleet)]);
+            return response()->json([
+                'ok' => true,
+                'what' => 'fleet',
+                'fleet_count' => count($fleet),
+            ]);
         }
 
         if ($what === 'stats') {
             $stats = $this->cache->rebuildStats();
-            return response()->json(['ok' => true, 'what' => 'stats', 'stats' => $stats]);
+            return response()->json([
+                'ok' => true,
+                'what' => 'stats',
+                'stats' => $stats,
+            ]);
         }
 
         // all

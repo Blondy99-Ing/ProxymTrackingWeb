@@ -12,20 +12,73 @@ use Illuminate\Support\Facades\Redis;
 class DashboardCacheService
 {
     private const KEY_STATS   = 'dash:stats';
-    private const KEY_FLEET   = 'dash:fleet';          // JSON array (fallback / rebuild complet)
-    private const KEY_FLEET_H = 'dash:fleet:h';        // Redis HASH: vehicle_id => JSON item (temps réel)
-    private const KEY_ALERTS  = 'dash:alerts';
+    private const KEY_FLEET   = 'dash:fleet';
+    private const KEY_FLEET_H = 'dash:fleet:h';
+    private const KEY_ALERTS  = 'dash:alerts';     // top (du jour / non traitées)
     private const KEY_VERSION = 'dash:version';
 
+    // ✅ canal Pub/Sub pour Node SSE
+    private const CH_EVENTS = 'dash:events';
+
     private int $ttlStats  = 60;
-    private int $ttlFleet  = 120; // plus long car maj en "patch"
+    private int $ttlFleet  = 120;
     private int $ttlAlerts = 30;
 
     // OFFLINE si last seen > X minutes
     private int $gpsOfflineMinutes = 10;
 
     // =========================
-    // Version
+    // Helpers "today"
+    // =========================
+    private function todayKeySuffix(): string
+    {
+        return now()->toDateString(); // "YYYY-MM-DD"
+    }
+
+    private function keyAlertsTotalToday(): string
+    {
+        return 'dash:alerts:total:' . $this->todayKeySuffix();
+    }
+
+    private function keyAlertsByTypeToday(): string
+    {
+        return 'dash:alerts:by_type:' . $this->todayKeySuffix();
+    }
+
+    private function todayStart(): Carbon
+    {
+        return now()->startOfDay();
+    }
+
+    private function todayEnd(): Carbon
+    {
+        return now()->endOfDay();
+    }
+
+    private function isTodayAlert(?Carbon $dt): bool
+    {
+        if (!$dt) return false;
+        return $dt->isSameDay(now());
+    }
+
+    // =========================
+    // Pub/Sub Events (pour Node SSE)
+    // =========================
+    private function publish(string $event, array $data): void
+    {
+        try {
+            Redis::publish(self::CH_EVENTS, json_encode([
+                'event' => $event,
+                'ts'    => now()->toISOString(),
+                'data'  => $data,
+            ], JSON_UNESCAPED_UNICODE));
+        } catch (\Throwable $e) {
+            // no-op
+        }
+    }
+
+    // =========================
+    // Version (fallback legacy)
     // =========================
     public function getVersion(): int
     {
@@ -38,7 +91,7 @@ class DashboardCacheService
     }
 
     // =========================
-    // STATS
+    // STATS (today + unprocessed)
     // =========================
     public function getStatsFromRedis(): ?array
     {
@@ -52,33 +105,159 @@ class DashboardCacheService
         $vehiclesCount     = Voiture::count();
         $associationsCount = Voiture::has('utilisateur')->count();
 
-        // non traitées
-        $alertsCount = Alert::where('processed', false)->count();
+        // ✅ alertes du jour / non traitées : priorité aux compteurs Redis
+        $alertsTotalKey = $this->keyAlertsTotalToday();
+        $alertsByTypeKey = $this->keyAlertsByTypeToday();
 
-        // par type (IMPORTANT : colonne réelle = alert_type)
-        $rows = Alert::query()
-            ->where('processed', false)
-            ->selectRaw("COALESCE(alert_type, 'unknown') as t, COUNT(*) as c")
-            ->groupBy('t')
-            ->get();
+        $alertsTotal = Redis::get($alertsTotalKey);
+        $alertsByType = Redis::hgetall($alertsByTypeKey);
 
-        $alertsByType = [];
-        foreach ($rows as $r) {
-            $alertsByType[(string)$r->t] = (int)$r->c;
+        $alertsCount = null;
+        $byType = null;
+
+        if ($alertsTotal !== null && is_array($alertsByType)) {
+            $alertsCount = (int)$alertsTotal;
+            $byType = [];
+            foreach ($alertsByType as $k => $v) {
+                $byType[(string)$k] = (int)$v;
+            }
+        } else {
+            // fallback DB (si Redis vide)
+            $alertsCount = Alert::query()
+                ->where('processed', false)
+                ->whereBetween('alerted_at', [$this->todayStart(), $this->todayEnd()])
+                ->count();
+
+            $rows = Alert::query()
+                ->where('processed', false)
+                ->whereBetween('alerted_at', [$this->todayStart(), $this->todayEnd()])
+                ->selectRaw("COALESCE(alert_type, 'unknown') as t, COUNT(*) as c")
+                ->groupBy('t')
+                ->get();
+
+            $byType = [];
+            foreach ($rows as $r) {
+                $byType[(string)$r->t] = (int)$r->c;
+            }
+
+            $this->setAlertCountersToday((int)$alertsCount, $byType);
         }
 
         $payload = [
             'usersCount'        => (int)$usersCount,
             'vehiclesCount'     => (int)$vehiclesCount,
             'associationsCount' => (int)$associationsCount,
+
             'alertsCount'       => (int)$alertsCount,
-            'alertsByType'      => $alertsByType,
+            'alertsByType'      => $byType,
+            'alertsScope'       => [
+                'day' => $this->todayKeySuffix(),
+                'processed' => false,
+            ],
         ];
 
         Redis::setex(self::KEY_STATS, $this->ttlStats, json_encode($payload, JSON_UNESCAPED_UNICODE));
         $this->bumpVersion();
 
+        // ✅ patch Node SSE
+        $this->publish('stats_patch', [
+            'usersCount'        => (int)$usersCount,
+            'vehiclesCount'     => (int)$vehiclesCount,
+            'associationsCount' => (int)$associationsCount,
+            'alertsCount'       => (int)$alertsCount,
+            'alertsByType'      => $byType,
+            'alertsScope'       => $payload['alertsScope'],
+        ]);
+
         return $payload;
+    }
+
+    // =========================
+    // ALERT COUNTERS (today)
+    // =========================
+    private function setAlertCountersToday(int $total, array $byType): void
+    {
+        $totalKey = $this->keyAlertsTotalToday();
+        $byTypeKey = $this->keyAlertsByTypeToday();
+
+        try {
+            Redis::set($totalKey, (string)$total);
+            Redis::del($byTypeKey);
+            if (!empty($byType)) {
+                Redis::hmset($byTypeKey, array_map(fn($v) => (string)((int)$v), $byType));
+            }
+        } catch (\Throwable $e) {
+            // no-op
+        }
+    }
+
+    public function getAlertsByTypeCountersToday(): array
+    {
+        $byTypeKey = $this->keyAlertsByTypeToday();
+        $raw = [];
+        try { $raw = Redis::hgetall($byTypeKey); } catch (\Throwable $e) {}
+
+        $out = [];
+        if (is_array($raw)) {
+            foreach ($raw as $k => $v) $out[(string)$k] = (int)$v;
+        }
+        return $out;
+    }
+
+    // ✅ AJOUT: total du jour (pour alerts_summary dans SSE)
+    public function getAlertsTotalTodayCounter(): int
+    {
+        $totalKey = $this->keyAlertsTotalToday();
+        try {
+            return (int) (Redis::get($totalKey) ?? 0);
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    /**
+     * ✅ appelé uniquement si alerte du jour ET non traitée (création)
+     */
+    public function onNewAlertCountersToday(string $type): void
+    {
+        $type = $type !== '' ? $type : 'unknown';
+
+        $totalKey = $this->keyAlertsTotalToday();
+        $byTypeKey = $this->keyAlertsByTypeToday();
+
+        try {
+            Redis::pipeline(function ($pipe) use ($type, $totalKey, $byTypeKey) {
+                $pipe->incr($totalKey);
+                $pipe->hincrby($byTypeKey, $type, 1);
+            });
+        } catch (\Throwable $e) {}
+
+        $this->publish('stats_patch', [
+            'alertsCount'  => (int)(Redis::get($totalKey) ?? 0),
+            'alertsByType' => $this->getAlertsByTypeCountersToday(),
+            'alertsScope'  => ['day' => $this->todayKeySuffix(), 'processed' => false],
+        ]);
+    }
+
+    public function onResolveAlertCountersToday(string $type): void
+    {
+        $type = $type !== '' ? $type : 'unknown';
+
+        $totalKey = $this->keyAlertsTotalToday();
+        $byTypeKey = $this->keyAlertsByTypeToday();
+
+        try {
+            Redis::pipeline(function ($pipe) use ($type, $totalKey, $byTypeKey) {
+                $pipe->decr($totalKey);
+                $pipe->hincrby($byTypeKey, $type, -1);
+            });
+        } catch (\Throwable $e) {}
+
+        $this->publish('stats_patch', [
+            'alertsCount'  => (int)(Redis::get($totalKey) ?? 0),
+            'alertsByType' => $this->getAlertsByTypeCountersToday(),
+            'alertsScope'  => ['day' => $this->todayKeySuffix(), 'processed' => false],
+        ]);
     }
 
     // =========================
@@ -86,7 +265,6 @@ class DashboardCacheService
     // =========================
     public function getFleetFromRedis(): array
     {
-        // ✅ priorité au hash temps réel (ultra rapide)
         try {
             $all = Redis::hgetall(self::KEY_FLEET_H);
             if (is_array($all) && !empty($all)) {
@@ -97,33 +275,23 @@ class DashboardCacheService
                 }
                 return $out;
             }
-        } catch (\Throwable $e) {
-            // fallback JSON
-        }
+        } catch (\Throwable $e) {}
 
         $json = Redis::get(self::KEY_FLEET);
         return $json ? (json_decode($json, true) ?: []) : [];
     }
 
-    /**
-     * ✅ rebuild complet (à utiliser rarement)
-     * - Optimisé: join sur dernière location par mac_id_gps
-     * - Construit aussi le HASH temps réel (KEY_FLEET_H)
-     */
     public function rebuildFleet(): array
     {
-        // 1) récupérer voitures + utilisateurs (light)
         $voitures = Voiture::query()
             ->with(['utilisateur:id,prenom,nom'])
             ->select(['id','immatriculation','marque','model','mac_id_gps'])
             ->get();
 
-        // 2) dernière location par mac_id_gps (subquery)
         $macIds = $voitures->pluck('mac_id_gps')->filter()->unique()->values()->all();
 
         $latestByMac = [];
         if (!empty($macIds)) {
-            // prend la dernière location (par datetime ou sys_time)
             $latest = Location::query()
                 ->select(['id','mac_id_gps','latitude','longitude','heart_time','sys_time','datetime','status','speed'])
                 ->whereIn('mac_id_gps', $macIds)
@@ -156,22 +324,21 @@ class DashboardCacheService
             $userProfileUrl = $userId ? route('users.profile', ['id' => $userId]) : null;
 
             $lastSeen = $loc['heart_time'] ?? $loc['sys_time'] ?? $loc['datetime'] ?? null;
-
             $gpsOnline = $this->isGpsOnline($lastSeen);
 
             $engineDecoded = app(\App\Services\GpsControlService::class)->decodeEngineStatus($loc['status'] ?? null);
             $engineCut = ($engineDecoded['engineState'] ?? 'UNKNOWN') === 'CUT';
 
             $row = [
-                'id'              => (int)$v->id,
-                'immatriculation' => $v->immatriculation,
-                'marque'          => $v->marque,
-                'model'           => $v->model,
-                'users'           => $users,
-                'user_id'         => $userId,
-                'user_profile_url'=> $userProfileUrl,
-                'lat'             => (float)$lat,
-                'lon'             => (float)$lon,
+                'id'               => (int)$v->id,
+                'immatriculation'  => $v->immatriculation,
+                'marque'           => $v->marque,
+                'model'            => $v->model,
+                'users'            => $users,
+                'user_id'          => $userId,
+                'user_profile_url' => $userProfileUrl,
+                'lat'              => (float)$lat,
+                'lon'              => (float)$lon,
                 'engine' => [
                     'cut' => $engineCut,
                     'engineState' => $engineDecoded['engineState'] ?? 'UNKNOWN',
@@ -187,24 +354,20 @@ class DashboardCacheService
             $hashPayload[(string)$v->id] = json_encode($row, JSON_UNESCAPED_UNICODE);
         }
 
-        // write hash (temps réel)
         Redis::del(self::KEY_FLEET_H);
         if (!empty($hashPayload)) {
             Redis::hmset(self::KEY_FLEET_H, $hashPayload);
             Redis::expire(self::KEY_FLEET_H, $this->ttlFleet);
         }
 
-        // write json fallback
         Redis::setex(self::KEY_FLEET, $this->ttlFleet, json_encode($fleet, JSON_UNESCAPED_UNICODE));
 
         $this->bumpVersion();
+        $this->publish('fleet_rebuilt', ['count' => count($fleet)]);
+
         return $fleet;
     }
 
-    /**
-     * ✅ Temps réel: mise à jour 1 véhicule seulement
-     * appelé par LocationObserver::created()
-     */
     public function updateVehicleFromLocation(Location $location): void
     {
         $macId = trim((string)$location->mac_id_gps);
@@ -238,15 +401,15 @@ class DashboardCacheService
         $engineCut = ($engineDecoded['engineState'] ?? 'UNKNOWN') === 'CUT';
 
         $row = [
-            'id'              => (int)$voiture->id,
-            'immatriculation' => $voiture->immatriculation,
-            'marque'          => $voiture->marque,
-            'model'           => $voiture->model,
-            'users'           => $users,
-            'user_id'         => $userId,
-            'user_profile_url'=> $userProfileUrl,
-            'lat'             => (float)$lat,
-            'lon'             => (float)$lon,
+            'id'               => (int)$voiture->id,
+            'immatriculation'  => $voiture->immatriculation,
+            'marque'           => $voiture->marque,
+            'model'            => $voiture->model,
+            'users'            => $users,
+            'user_id'          => $userId,
+            'user_profile_url' => $userProfileUrl,
+            'lat'              => (float)$lat,
+            'lon'              => (float)$lon,
             'engine' => [
                 'cut' => $engineCut,
                 'engineState' => $engineDecoded['engineState'] ?? 'UNKNOWN',
@@ -261,10 +424,12 @@ class DashboardCacheService
         Redis::hset(self::KEY_FLEET_H, (string)$voiture->id, json_encode($row, JSON_UNESCAPED_UNICODE));
         Redis::expire(self::KEY_FLEET_H, $this->ttlFleet);
 
-        // (optionnel) ne pas maintenir KEY_FLEET json à chaque update 1 véhicule (coûteux)
-        // => on le refresh seulement via rebuildFleet()
-
         $this->bumpVersion();
+
+        $this->publish('vehicle_patch', [
+            'vehicle_id' => (int)$voiture->id,
+            'vehicle'    => $row,
+        ]);
     }
 
     private function isGpsOnline($lastSeen): ?bool
@@ -280,7 +445,7 @@ class DashboardCacheService
     }
 
     // =========================
-    // ALERTS
+    // ALERTS (table = today + non processed)
     // =========================
     public function getAlertsFromRedis(): array
     {
@@ -288,7 +453,6 @@ class DashboardCacheService
         return $json ? (json_decode($json, true) ?: []) : [];
     }
 
-    // alias pour ton Observer
     public function rebuildAlertsTop10(): array
     {
         return $this->rebuildAlerts(10);
@@ -297,7 +461,8 @@ class DashboardCacheService
     public function rebuildAlerts(int $limit = 10): array
     {
         $alerts = Alert::with(['voiture.utilisateur'])
-            ->orderBy('processed', 'asc')
+            ->where('processed', false)
+            ->whereBetween('alerted_at', [$this->todayStart(), $this->todayEnd()])
             ->orderBy('alerted_at', 'desc')
             ->limit($limit)
             ->get()
@@ -312,23 +477,94 @@ class DashboardCacheService
                 $type = $a->alert_type ?? 'unknown';
 
                 return [
-                    'id'           => $a->id,
+                    'id'           => (int)$a->id,
+                    'vehicle_id'   => (int)($a->voiture_id ?? 0),
                     'vehicle'      => $v?->immatriculation ?? 'N/A',
                     'type'         => $type,
                     'users'        => $users ?: null,
                     'time'         => optional($a->alerted_at)->format('d/m/Y H:i:s'),
-                    'processed'    => (bool)$a->processed,
-                    'status'       => $a->processed ? 'Résolu' : 'Ouvert',
-                    'status_color' => $a->processed ? 'bg-green-500' : 'bg-red-500',
+                    'processed'    => false,
+                    'status'       => 'Ouvert',
+                    'status_color' => 'bg-red-500',
                 ];
             })
             ->values()
             ->toArray();
 
         Redis::setex(self::KEY_ALERTS, $this->ttlAlerts, json_encode($alerts, JSON_UNESCAPED_UNICODE));
+
+        // ✅ recale compteurs du jour (non traitées)
+        $alertsCount = Alert::query()
+            ->where('processed', false)
+            ->whereBetween('alerted_at', [$this->todayStart(), $this->todayEnd()])
+            ->count();
+
+        $rows = Alert::query()
+            ->where('processed', false)
+            ->whereBetween('alerted_at', [$this->todayStart(), $this->todayEnd()])
+            ->selectRaw("COALESCE(alert_type, 'unknown') as t, COUNT(*) as c")
+            ->groupBy('t')
+            ->get();
+
+        $byType = [];
+        foreach ($rows as $r) $byType[(string)$r->t] = (int)$r->c;
+
+        $this->setAlertCountersToday((int)$alertsCount, $byType);
+
         $this->bumpVersion();
 
+        $this->publish('stats_patch', [
+            'alertsCount'  => (int)$alertsCount,
+            'alertsByType' => $byType,
+            'alertsScope'  => ['day' => $this->todayKeySuffix(), 'processed' => false],
+        ]);
+
+        $this->publish('alerts_top', [
+            'top' => $alerts,
+            'scope' => ['day' => $this->todayKeySuffix(), 'processed' => false],
+        ]);
+
         return $alerts;
+    }
+
+    public function publishNewAlertEvent(Alert $a, bool $includeTop = true): void
+    {
+        if ((bool)$a->processed === true) return;
+        if (!$this->isTodayAlert($a->alerted_at)) return;
+
+        $type = (string)($a->alert_type ?? 'unknown');
+
+        $this->onNewAlertCountersToday($type);
+
+        $top = $includeTop ? $this->rebuildAlertsTop10() : null;
+
+        $this->publish('alert_new', [
+            'id'         => (int)$a->id,
+            'type'       => $type,
+            'vehicle_id' => (int)($a->voiture_id ?? 0),
+            'alerted_at' => optional($a->alerted_at)->toISOString(),
+            'top'        => $top,
+            'scope'      => ['day' => $this->todayKeySuffix(), 'processed' => false],
+        ]);
+    }
+
+    public function publishResolvedAlertEvent(Alert $a, bool $includeTop = true): void
+    {
+        if (!$this->isTodayAlert($a->alerted_at)) return;
+
+        $type = (string)($a->alert_type ?? 'unknown');
+
+        $this->onResolveAlertCountersToday($type);
+
+        $top = $includeTop ? $this->rebuildAlertsTop10() : null;
+
+        $this->publish('alert_processed', [
+            'id'         => (int)$a->id,
+            'type'       => $type,
+            'vehicle_id' => (int)($a->voiture_id ?? 0),
+            'top'        => $top,
+            'scope'      => ['day' => $this->todayKeySuffix(), 'processed' => false],
+        ]);
     }
 
     // =========================

@@ -5,7 +5,7 @@
 
 @push('head')
     {{-- Google Maps API avec callback --}}
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo&callback=initMap" async defer></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') }}&callback=initMap" async defer></script>
 @endpush
 
 @php

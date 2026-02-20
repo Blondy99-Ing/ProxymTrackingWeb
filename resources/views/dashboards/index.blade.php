@@ -9,31 +9,24 @@
     {{-- ✅ CONFIG SIMPLE DES ALERTES (MODIFIABLE ICI) --}}
     @php
     /**
-    * Tu modifies ici:
-    * - label
-    * - icon
-    * - accent (couleur)
-    * - importance (badge)
-    */
+     * Tu modifies ici:
+     * - label
+     * - icon
+     * - accent (couleur)
+     * - importance (badge)
+     */
     $ALERT_TYPES = [
-    'stolen' => ['label' => 'Vol', 'icon' => 'fa-mask', 'accent' => 'bg-red-100 text-red-700', 'badge' => 'bg-red-500'],
-    'low_battery' => ['label' => 'Batterie Faible', 'icon' => 'fa-battery-quarter', 'accent' => 'bg-orange-100
-    text-orange-700', 'badge' => 'bg-orange-500'],
-    'geofence' => ['label' => 'Geofence', 'icon' => 'fa-draw-polygon', 'accent' => 'bg-yellow-100 text-yellow-800',
-    'badge' => 'bg-yellow-500'],
-    'safe_zone' => ['label' => 'Safe Zone', 'icon' => 'fa-shield-alt', 'accent' => 'bg-blue-100 text-blue-700', 'badge'
-    => 'bg-blue-500'],
-    'speed' => ['label' => 'Vitesse', 'icon' => 'fa-tachometer-alt', 'accent' => 'bg-purple-100 text-purple-700',
-    'badge' => 'bg-purple-500'],
-    'offline' => ['label' => 'Offline', 'icon' => 'fa-clock', 'accent' => 'bg-gray-100 text-gray-700', 'badge' =>
-    'bg-gray-500'],
-    'time_zone' => ['label' => 'Time Zone', 'icon' => 'fa-calendar-alt', 'accent' => 'bg-indigo-100 text-indigo-700',
-    'badge' => 'bg-indigo-500'],
+        'stolen'      => ['label' => 'Vol',            'icon' => 'fa-mask',            'accent' => 'bg-red-100 text-red-700',      'badge' => 'bg-red-500'],
+        'low_battery' => ['label' => 'Batterie Faible','icon' => 'fa-battery-quarter','accent' => 'bg-orange-100 text-orange-700', 'badge' => 'bg-orange-500'],
+        'geofence'    => ['label' => 'Geofence',       'icon' => 'fa-draw-polygon',    'accent' => 'bg-yellow-100 text-yellow-800','badge' => 'bg-yellow-500'],
+        'safe_zone'   => ['label' => 'Safe Zone',      'icon' => 'fa-shield-alt',      'accent' => 'bg-blue-100 text-blue-700',    'badge' => 'bg-blue-500'],
+        'speed'       => ['label' => 'Vitesse',        'icon' => 'fa-tachometer-alt',  'accent' => 'bg-purple-100 text-purple-700','badge' => 'bg-purple-500'],
+        'offline'     => ['label' => 'Offline',        'icon' => 'fa-clock',           'accent' => 'bg-gray-100 text-gray-700',    'badge' => 'bg-gray-500'],
+        'time_zone'   => ['label' => 'Time Zone',      'icon' => 'fa-calendar-alt',    'accent' => 'bg-indigo-100 text-indigo-700','badge' => 'bg-indigo-500'],
     ];
     @endphp
 
-    {{-- ✅ STATISTIQUES (TOUTES SUR LA MEME LIGNE EN GRAND ECRAN) --}}
-    {{-- 2 cartes globales (Véhicules + Alertes NR) + 7 cartes types = 9 cartes --}}
+    {{-- ✅ STATISTIQUES --}}
     <div class="dashboard-stats-sticky">
         <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3">
 
@@ -59,8 +52,7 @@
                 <span class="absolute left-0 top-0 h-full w-1 bg-red-500"></span>
 
                 <div class="pl-2">
-                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Alertes Non-résolues
-                    </p>
+                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Alertes Non-résolues</p>
                     <p class="text-xl font-bold mt-1 text-red-500" id="stat-alerts">{{ $alertsCount }}</p>
                 </div>
 
@@ -73,22 +65,20 @@
 
             {{-- Alertes par type --}}
             @foreach($ALERT_TYPES as $k => $meta)
-            <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
-                {{-- bande couleur (importance) --}}
-                <span class="absolute left-0 top-0 h-full w-1 {{ $meta['badge'] }}"></span>
+                <div class="ui-card p-3 flex items-center justify-between relative overflow-hidden">
+                    <span class="absolute left-0 top-0 h-full w-1 {{ $meta['badge'] }}"></span>
 
-                <div class="pl-2">
-                    <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">{{ $meta['label'] }}
-                    </p>
-                    <p class="text-xl font-bold mt-1" id="stat-alert-{{ $k }}">0</p>
-                </div>
+                    <div class="pl-2">
+                        <p class="text-[10px] font-semibold text-secondary uppercase tracking-wider">{{ $meta['label'] }}</p>
+                        <p class="text-xl font-bold mt-1" id="stat-alert-{{ $k }}">0</p>
+                    </div>
 
-                <div class="text-xl opacity-60">
-                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg {{ $meta['accent'] }}">
-                        <i class="fas {{ $meta['icon'] }}"></i>
-                    </span>
+                    <div class="text-xl opacity-60">
+                        <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg {{ $meta['accent'] }}">
+                            <i class="fas {{ $meta['icon'] }}"></i>
+                        </span>
+                    </div>
                 </div>
-            </div>
             @endforeach
         </div>
     </div>
@@ -96,7 +86,7 @@
     {{-- Layout Flotte : Liste à gauche / Carte à droite --}}
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
 
-        {{-- Colonne gauche : Liste des véhicules & associations --}}
+        {{-- Colonne gauche : Liste --}}
         <div class="lg:col-span-1">
             <div class="ui-card h-full flex flex-col gap-3" style="padding: 1.25rem;">
 
@@ -166,6 +156,14 @@
 
 </div>
 
+{{-- ✅ Audio (effets sonores) --}}
+<audio id="audio-alert-actif" preload="auto">
+    <source src="{{ asset('assets/song/alert_actif.mp3') }}" type="audio/mpeg">
+</audio>
+<audio id="audio-alert-passif" preload="auto">
+    <source src="{{ asset('assets/song/alert_passif.mp3') }}" type="audio/mpeg">
+</audio>
+
 <script>
 let map;
 let markersById = {};
@@ -178,7 +176,6 @@ let vehiclesData = @json($vehicles ?? []);
 
 // ✅ URL template "Voir les trajets"
 const TRAJETS_URL_TEMPLATE = "{{ route('trajets.index', ['vehicle_id' => '__ID__']) }}";
-
 function trajetsUrl(id) {
     return TRAJETS_URL_TEMPLATE.replace('__ID__', encodeURIComponent(String(id)));
 }
@@ -186,12 +183,99 @@ function trajetsUrl(id) {
 // ✅ config alertes
 const ALERT_META = @json($ALERT_TYPES);
 
+// =====================
+// 🔊 Effets sonores
+// =====================
+
+// types qui jouent le "passif" (comme tu as demandé)
+const PASSIF_TYPES = new Set(['speed', 'safe_zone', 'time_zone', 'offline']);
+// le reste = "actif" (stolen, low_battery, geofence, etc.)
+
+let lastAlertsByType = {};   // pour détecter une augmentation
+let audioUnlocked = false;
+
+// essaie de déverrouiller l’audio dès qu’il y a une interaction (Chrome/Edge bloquent autoplay)
+function unlockAudioOnce() {
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+
+    const a1 = document.getElementById('audio-alert-actif');
+    const a2 = document.getElementById('audio-alert-passif');
+
+    // petit play silencieux -> si bloqué, on restera "locked" mais on réessaie au prochain click
+    const tryPlay = (a) => {
+        if (!a) return Promise.resolve();
+        a.muted = true;
+        const p = a.play();
+        if (p && typeof p.then === 'function') {
+            return p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { /* no-op */ });
+        }
+        return Promise.resolve();
+    };
+
+    tryPlay(a1).finally(() => tryPlay(a2)).finally(() => {
+        // remet unmuted (au cas où)
+        if (a1) a1.muted = false;
+        if (a2) a2.muted = false;
+    });
+}
+
+['click','touchstart','keydown'].forEach(evt => {
+    window.addEventListener(evt, unlockAudioOnce, { once: true, passive: true });
+});
+
+function playAlertSound(type) {
+    // si pas encore unlock, on ne force pas (sinon erreurs console)
+    if (!audioUnlocked) return;
+
+    const isPassif = PASSIF_TYPES.has(String(type || '').toLowerCase());
+    const el = document.getElementById(isPassif ? 'audio-alert-passif' : 'audio-alert-actif');
+    if (!el) return;
+
+    try {
+        el.currentTime = 0;
+        const p = el.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (e) {}
+}
+
+// détecte si une ou plusieurs alertes ont augmenté
+function detectAndPlaySounds(newByType) {
+    if (!newByType || typeof newByType !== 'object') return;
+
+    // on joue au plus 1 son par event SSE (pour éviter spam)
+    let played = false;
+
+    Object.keys(ALERT_META || {}).forEach(k => {
+        const prev = Number(lastAlertsByType?.[k] ?? 0);
+        const cur  = Number(newByType?.[k] ?? 0);
+
+        if (!played && cur > prev) {
+            playAlertSound(k);
+            played = true;
+        }
+    });
+
+    lastAlertsByType = {...newByType};
+}
+
+// init: on capte les valeurs initiales affichées (0 ou autre)
+function initLastAlertCountersFromDom() {
+    const o = {};
+    Object.keys(ALERT_META || {}).forEach(k => {
+        const el = document.getElementById('stat-alert-' + k);
+        o[k] = el ? Number(el.textContent || 0) : 0;
+    });
+    lastAlertsByType = o;
+}
+
+// =====================
+// Map / SSE
+// =====================
+
 function initFleetMap() {
     map = new google.maps.Map(document.getElementById('fleetMap'), {
-        center: {
-            lat: 4.0511,
-            lng: 9.7679
-        },
+        center: { lat: 4.0511, lng: 9.7679 },
         zoom: 7
     });
 
@@ -199,14 +283,13 @@ function initFleetMap() {
     renderMarkers(vehiclesData, true);
     initVehicleSearch();
 
+    initLastAlertCountersFromDom();
     startDashboardSSE();
 }
 
 function startDashboardSSE() {
     const url = "{{ route('dashboard.stream') }}";
-    dashboardSSE = new EventSource(url, {
-        withCredentials: true
-    });
+    dashboardSSE = new EventSource(url, { withCredentials: true });
     setSseIndicator('connecting');
 
     dashboardSSE.addEventListener('hello', () => setSseIndicator('connected'));
@@ -232,11 +315,18 @@ function startDashboardSSE() {
             applyStats(payload.stats);
 
             const byTypeFromStats = payload.stats.alertsByType || payload.stats.alerts_by_type || null;
-            if (byTypeFromStats) applyAlertTypeStats(byTypeFromStats);
+            if (byTypeFromStats) {
+                // 🔊 son si augmentation
+                detectAndPlaySounds(byTypeFromStats);
+                applyAlertTypeStats(byTypeFromStats);
+            }
         }
 
         // 2) ALERT SUMMARY (recommandé)
         if (payload.alerts_summary && payload.alerts_summary.by_type) {
+            // 🔊 son si augmentation
+            detectAndPlaySounds(payload.alerts_summary.by_type);
+
             applyAlertTypeStats(payload.alerts_summary.by_type);
 
             if (typeof payload.alerts_summary.total !== 'undefined') {
@@ -292,6 +382,9 @@ function applyStats(stats) {
         const el = document.getElementById(id);
         if (el && v !== undefined && v !== null) el.textContent = String(v);
     };
+
+    // NB: tu n’affiches pas stat-users/stat-associations dans ce template,
+    // mais on laisse au cas où tu les ajoutes plus tard.
     set('stat-users', stats.usersCount);
     set('stat-vehicles', stats.vehiclesCount);
     set('stat-associations', stats.associationsCount);
@@ -447,10 +540,7 @@ function renderMarkers(vehicles, fitBounds = false) {
 
         const id = v.id;
         newIds.add(String(id));
-        const position = {
-            lat: parseFloat(v.lat),
-            lng: parseFloat(v.lon)
-        };
+        const position = { lat: parseFloat(v.lat), lng: parseFloat(v.lon) };
 
         let marker = markersById[id];
         if (!marker) {
@@ -616,12 +706,12 @@ function escapeHtml(str) {
         '>': '&gt;',
         '"': '&quot;',
         "'": '&#039;'
-    } [m]));
+    }[m]));
 }
 
 function loadGoogleMaps() {
     const script = document.createElement('script');
-    script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyBn88TP5X-xaRCYo5gYxvGnVy_0WYotZWo";
+    script.src = "https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') }}";
     script.async = true;
     script.defer = true;
     script.onload = () => initFleetMap();

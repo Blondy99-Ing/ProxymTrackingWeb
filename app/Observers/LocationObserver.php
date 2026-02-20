@@ -5,46 +5,17 @@ namespace App\Observers;
 use App\Models\Location;
 use App\Services\DashboardCacheService;
 
-
 class LocationObserver
 {
+    public function __construct(private DashboardCacheService $cache) {}
+
     /**
-     * Handle the Location "created" event.
+     * ✅ Lorsqu'une location arrive:
+     * - update redis uniquement pour LE véhicule concerné
+     * - publish vehicle_patch (dans le cache service)
      */
     public function created(Location $location): void
     {
-        app(DashboardCacheService::class)->updateVehicleFromLocation($location);
-    }
-
-    /**
-     * Handle the Location "updated" event.
-     */
-    public function updated(Location $location): void
-    {
-        //
-    }
-
-    /**
-     * Handle the Location "deleted" event.
-     */
-    public function deleted(Location $location): void
-    {
-        //
-    }
-
-    /**
-     * Handle the Location "restored" event.
-     */
-    public function restored(Location $location): void
-    {
-        //
-    }
-
-    /**
-     * Handle the Location "force deleted" event.
-     */
-    public function forceDeleted(Location $location): void
-    {
-        //
+        $this->cache->updateVehicleFromLocation($location);
     }
 }

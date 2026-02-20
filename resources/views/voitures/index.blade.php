@@ -2,6 +2,14 @@
 
 @section('title', 'Suivi des Véhicules')
 
+@push('head')
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script async defer
+    src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') ?? env('GOOGLE_MAPS_KEY') }}&callback=initMap">
+</script>
+@endpush
+
+
 @php
     $isOpen = isset($voitureEdit) || (($errors ?? null) && $errors->any());
 

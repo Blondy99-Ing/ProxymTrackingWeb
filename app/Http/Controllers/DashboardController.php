@@ -13,23 +13,17 @@ class DashboardController extends Controller
     {
         // ✅ Stats (si absent => rebuild)
         $stats = $this->cache->getStatsFromRedis();
-        if (!$stats) {
-            $stats = $this->cache->rebuildStats();
-        }
+        if (!$stats) $stats = $this->cache->rebuildStats();
 
         // ✅ Fleet (si vide => rebuild)
         $vehicles = $this->cache->getFleetFromRedis();
-        if (empty($vehicles)) {
-            $vehicles = $this->cache->rebuildFleet();
-        }
+        if (empty($vehicles)) $vehicles = $this->cache->rebuildFleet();
 
         // ✅ Alerts (si vide => rebuild)
         $alerts = $this->cache->getAlertsFromRedis();
-        if (empty($alerts)) {
-            $alerts = $this->cache->rebuildAlerts(10);
-        }
+        if (empty($alerts)) $alerts = $this->cache->rebuildAlerts(10);
 
-        // ✅ (Optionnel) si tu veux garantir alertsCount/alertsByType même au 1er load
+        // ✅ Garantit alertsCount/alertsByType (fallback)
         if (!isset($stats['alertsCount']) || !isset($stats['alertsByType'])) {
             $stats = $this->cache->rebuildStats();
         }
@@ -40,12 +34,15 @@ class DashboardController extends Controller
             'associationsCount' => (int)($stats['associationsCount'] ?? 0),
             'alertsCount'       => (int)($stats['alertsCount'] ?? 0),
 
-            // ✅ la vue attend ces deux variables
             'vehicles'          => $vehicles,
             'alerts'            => $alerts,
         ]);
     }
 
+    /**
+     * ⚠️ SSE Laravel = fallback (polling version)
+     * Ton vrai temps réel performant = Node SSE (Redis Pub/Sub).
+     */
     public function dashboardStream(): StreamedResponse
     {
         return response()->stream(function () {
@@ -54,7 +51,6 @@ class DashboardController extends Controller
             @ini_set('zlib.output_compression', 0);
             @ini_set('implicit_flush', 1);
 
-            // libère le lock session
             try { session()->save(); } catch (\Throwable $e) {}
             if (function_exists('session_write_close')) @session_write_close();
 
@@ -62,7 +58,6 @@ class DashboardController extends Controller
             echo "data: {\"ok\":true}\n\n";
             $this->flushNow();
 
-            // ✅ push initial
             echo "event: dashboard\n";
             echo "data: " . $this->buildPayload() . "\n\n";
             $this->flushNow();
@@ -79,13 +74,11 @@ class DashboardController extends Controller
                     echo "data: " . $this->buildPayload() . "\n\n";
                     $this->flushNow();
                 } else {
-                    // keep alive
                     echo ": ping\n\n";
                     $this->flushNow();
                 }
 
-                // ✅ 120ms = très réactif (ok)
-                usleep(120000);
+                usleep(200000); // 200ms
             }
 
         }, 200, [
@@ -97,7 +90,6 @@ class DashboardController extends Controller
         ]);
     }
 
-    // ✅ Endpoint debug / test
     public function rebuildCache()
     {
         $all = $this->cache->rebuildAll();
@@ -110,17 +102,28 @@ class DashboardController extends Controller
         ]);
     }
 
+    // ✅ CORRIGÉ: ajoute alerts_summary (compteurs du jour toujours frais)
     private function buildPayload(): string
     {
         $stats  = $this->cache->getStatsFromRedis() ?? [];
         $fleet  = $this->cache->getFleetFromRedis();
         $alerts = $this->cache->getAlertsFromRedis();
 
+        $alertsSummary = [
+            'total' => $this->cache->getAlertsTotalTodayCounter(),
+            'by_type' => $this->cache->getAlertsByTypeCountersToday(),
+            'scope' => [
+                'day' => now()->toDateString(),
+                'processed' => false,
+            ],
+        ];
+
         return json_encode([
             'ts'     => now()->toDateTimeString(),
             'stats'  => $stats,
             'fleet'  => $fleet,
             'alerts' => $alerts,
+            'alerts_summary' => $alertsSummary, // ✅
         ], JSON_UNESCAPED_UNICODE);
     }
 

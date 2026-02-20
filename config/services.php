@@ -35,7 +35,9 @@ return [
         ],
     ],
 
-    'dashboard_webhook_secret' => env('DASHBOARD_WEBHOOK_SECRET'),
+    'internal' => [
+    'webhook_secret' => env('INTERNAL_WEBHOOK_SECRET'),
+],
 
     'brevo' => [
         'key' => env('BREVO_API_KEY'),

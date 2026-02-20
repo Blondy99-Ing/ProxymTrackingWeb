@@ -1017,14 +1017,15 @@
             </div>
 
             <!-- 2. Notifications -->
-            <div class="relative">
-                <button class="navbar-icon-btn" title="Notifications">
-                    <i class="fas fa-bell"></i>
-                    <span class="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full border"
-                        style="border-color: var(--color-card);"></span>
-                </button>
-                <!-- Menu de notifications (caché) -->
-            </div>
+           <!-- 2. Notifications -->
+<div class="relative">
+    <a href="{{ route('alerts.view') ?? '#' }}" class="navbar-icon-btn" title="Notifications">
+        <i class="fas fa-bell"></i>
+        <span class="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full border"
+              style="border-color: var(--color-card);"></span>
+    </a>
+    <!-- Menu de notifications (caché) -->
+</div>
 
             <!-- 3. Menu Utilisateur -->
             <div class="relative" id="user-menu-container">
@@ -1043,8 +1044,7 @@
                         <p class="font-semibold">{{ auth()->user()->prenom }} {{ auth()->user()->nom }}</p>
                         <p class="text-xs text-secondary"> {{ auth()->user()->email }}</p>
                     </div>
-                    <a href="{{ route('profile.edit') ?? '#' }}"><i class="fas fa-user-circle mr-2"></i> Mon Profil</a>
-                    <a href="#"><i class="fas fa-cog mr-2"></i> Paramètres</a>
+                    
                     <a href="#" class="text-red-500"
                         onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
                         <i class="fas fa-sign-out-alt mr-2"></i> Déconnexion
