@@ -16,14 +16,22 @@
      * - importance (badge)
      */
     $ALERT_TYPES = [
-        'stolen'      => ['label' => 'Vol',            'icon' => 'fa-mask',            'accent' => 'bg-red-100 text-red-700',      'badge' => 'bg-red-500'],
-        'low_battery' => ['label' => 'Batterie Faible','icon' => 'fa-battery-quarter','accent' => 'bg-orange-100 text-orange-700', 'badge' => 'bg-orange-500'],
-        'geofence'    => ['label' => 'Geofence',       'icon' => 'fa-draw-polygon',    'accent' => 'bg-yellow-100 text-yellow-800','badge' => 'bg-yellow-500'],
-        'safe_zone'   => ['label' => 'Safe Zone',      'icon' => 'fa-shield-alt',      'accent' => 'bg-blue-100 text-blue-700',    'badge' => 'bg-blue-500'],
-        'speed'       => ['label' => 'Vitesse',        'icon' => 'fa-tachometer-alt',  'accent' => 'bg-purple-100 text-purple-700','badge' => 'bg-purple-500'],
-        'offline'     => ['label' => 'Offline',        'icon' => 'fa-clock',           'accent' => 'bg-gray-100 text-gray-700',    'badge' => 'bg-gray-500'],
-        'time_zone'   => ['label' => 'Time Zone',      'icon' => 'fa-calendar-alt',    'accent' => 'bg-indigo-100 text-indigo-700','badge' => 'bg-indigo-500'],
+        'stolen'      => ['label' => 'Vol',             'icon' => 'fa-mask',            'accent' => 'bg-red-100 text-red-700',       'badge' => 'bg-red-500'],
+        'low_battery' => ['label' => 'Batterie Faible', 'icon' => 'fa-battery-quarter','accent' => 'bg-orange-100 text-orange-700',  'badge' => 'bg-orange-500'],
+        'geofence'    => ['label' => 'Geofence',        'icon' => 'fa-draw-polygon',    'accent' => 'bg-yellow-100 text-yellow-800', 'badge' => 'bg-yellow-500'],
+        'safe_zone'   => ['label' => 'Safe Zone',       'icon' => 'fa-shield-alt',      'accent' => 'bg-blue-100 text-blue-700',     'badge' => 'bg-blue-500'],
+        'speed'       => ['label' => 'Vitesse',         'icon' => 'fa-tachometer-alt',  'accent' => 'bg-purple-100 text-purple-700', 'badge' => 'bg-purple-500'],
+        'offline'     => ['label' => 'Offline',         'icon' => 'fa-clock',           'accent' => 'bg-gray-100 text-gray-700',     'badge' => 'bg-gray-500'],
+        'time_zone'   => ['label' => 'Time Zone',       'icon' => 'fa-calendar-alt',    'accent' => 'bg-indigo-100 text-indigo-700', 'badge' => 'bg-indigo-500'],
     ];
+
+    // ✅ OPTIONAL: route AJAX pour retrouver l’utilisateur du véhicule
+    // Crée une route Laravel qui renvoie un JSON:
+    // GET vehicles/{vehicle}/callcenter  -> { user: { nom, prenom, phone } }
+    // et nomme-la: vehicles.callcenter
+    $CC_LOOKUP_TEMPLATE = \Illuminate\Support\Facades\Route::has('vehicles.callcenter')
+        ? route('vehicles.callcenter', ['vehicle' => '__ID__'])
+        : null;
     @endphp
 
     {{-- ✅ STATISTIQUES --}}
@@ -164,6 +172,17 @@
     <source src="{{ asset('assets/song/alert_passif.mp3') }}" type="audio/mpeg">
 </audio>
 
+{{-- ✅ POPUP Call-Center (top-center) --}}
+<div id="cc-toast-wrap" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none"
+     style="width: min(720px, calc(100vw - 1.5rem));">
+</div>
+
+<style>
+.cc-toast-enter { transform: translateY(-8px); opacity: 0; }
+.cc-toast-in    { transform: translateY(0);   opacity: 1; transition: all .18s ease-out; }
+.cc-toast-out   { transform: translateY(-8px); opacity: 0; transition: all .18s ease-in; }
+</style>
+
 <script>
 let map;
 let markersById = {};
@@ -171,7 +190,7 @@ let infoWindowsById = {};
 let selectedVehicleId = null;
 let dashboardSSE = null;
 
-// ✅ data initiale (peut être vide)
+// ✅ data initiale
 let vehiclesData = @json($vehicles ?? []);
 
 // ✅ URL template "Voir les trajets"
@@ -183,18 +202,15 @@ function trajetsUrl(id) {
 // ✅ config alertes
 const ALERT_META = @json($ALERT_TYPES);
 
+// ✅ OPTIONAL: route lookup call-center par véhicule
+const CC_LOOKUP_TEMPLATE = @json($CC_LOOKUP_TEMPLATE);
+
 // =====================
 // 🔊 Effets sonores
 // =====================
-
-// types qui jouent le "passif" (comme tu as demandé)
 const PASSIF_TYPES = new Set(['speed', 'safe_zone', 'time_zone', 'offline']);
-// le reste = "actif" (stolen, low_battery, geofence, etc.)
 
-let lastAlertsByType = {};   // pour détecter une augmentation
 let audioUnlocked = false;
-
-// essaie de déverrouiller l’audio dès qu’il y a une interaction (Chrome/Edge bloquent autoplay)
 function unlockAudioOnce() {
     if (audioUnlocked) return;
     audioUnlocked = true;
@@ -202,36 +218,30 @@ function unlockAudioOnce() {
     const a1 = document.getElementById('audio-alert-actif');
     const a2 = document.getElementById('audio-alert-passif');
 
-    // petit play silencieux -> si bloqué, on restera "locked" mais on réessaie au prochain click
     const tryPlay = (a) => {
         if (!a) return Promise.resolve();
         a.muted = true;
         const p = a.play();
         if (p && typeof p.then === 'function') {
-            return p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { /* no-op */ });
+            return p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => {});
         }
         return Promise.resolve();
     };
 
     tryPlay(a1).finally(() => tryPlay(a2)).finally(() => {
-        // remet unmuted (au cas où)
         if (a1) a1.muted = false;
         if (a2) a2.muted = false;
     });
 }
-
 ['click','touchstart','keydown'].forEach(evt => {
     window.addEventListener(evt, unlockAudioOnce, { once: true, passive: true });
 });
 
 function playAlertSound(type) {
-    // si pas encore unlock, on ne force pas (sinon erreurs console)
     if (!audioUnlocked) return;
-
-    const isPassif = PASSIF_TYPES.has(String(type || '').toLowerCase());
-    const el = document.getElementById(isPassif ? 'audio-alert-passif' : 'audio-alert-actif');
+    const t = String(type || '').toLowerCase();
+    const el = document.getElementById(PASSIF_TYPES.has(t) ? 'audio-alert-passif' : 'audio-alert-actif');
     if (!el) return;
-
     try {
         el.currentTime = 0;
         const p = el.play();
@@ -239,34 +249,295 @@ function playAlertSound(type) {
     } catch (e) {}
 }
 
-// détecte si une ou plusieurs alertes ont augmenté
-function detectAndPlaySounds(newByType) {
-    if (!newByType || typeof newByType !== 'object') return;
+// =====================
+// 📣 POPUP Call-Center
+// =====================
+let ccFirstSnapshot = true;         // pas de popup sur le 1er event SSE
+let lastSeenAlertId = 0;            // anti-refresh: on déclenche seulement si alert.id > lastSeenAlertId
+let userCacheByVehicleId = {};      // cache lookup user par vehicle_id
 
-    // on joue au plus 1 son par event SSE (pour éviter spam)
-    let played = false;
-
-    Object.keys(ALERT_META || {}).forEach(k => {
-        const prev = Number(lastAlertsByType?.[k] ?? 0);
-        const cur  = Number(newByType?.[k] ?? 0);
-
-        if (!played && cur > prev) {
-            playAlertSound(k);
-            played = true;
-        }
-    });
-
-    lastAlertsByType = {...newByType};
+function ccCloseToast(el) {
+    if (!el) return;
+    el.classList.remove('cc-toast-in');
+    el.classList.add('cc-toast-out');
+    setTimeout(() => { try { el.remove(); } catch(e) {} }, 220);
 }
 
-// init: on capte les valeurs initiales affichées (0 ou autre)
-function initLastAlertCountersFromDom() {
-    const o = {};
-    Object.keys(ALERT_META || {}).forEach(k => {
-        const el = document.getElementById('stat-alert-' + k);
-        o[k] = el ? Number(el.textContent || 0) : 0;
+function ccPushToast({ type, immatriculation, userDisplayName, phone, scriptText, durationMs = 26000 }) {
+    const wrap = document.getElementById('cc-toast-wrap');
+    if (!wrap) return;
+
+    const meta = (ALERT_META && ALERT_META[type]) ? ALERT_META[type] : {
+        label: String(type || 'Alerte'),
+        badge: 'bg-red-500',
+        accent: 'bg-red-100 text-red-700',
+        icon: 'fa-bell'
+    };
+
+    const title = meta.label || String(type || 'Alerte');
+    const badge = meta.badge || 'bg-red-500';
+    const accent = meta.accent || 'bg-red-100 text-red-700';
+    const icon = meta.icon || 'fa-bell';
+
+    const safeImmat = escapeHtml(immatriculation || '—');
+    const safeUser = escapeHtml(userDisplayName || 'Aucun utilisateur associé');
+    const safePhone = escapeHtml(phone || '—');
+    const safeScript = escapeHtml(scriptText || '');
+
+    const el = document.createElement('div');
+    el.className = `pointer-events-auto ui-card p-4 shadow-lg border border-[color:var(--color-border-subtle)] cc-toast-enter`;
+    el.innerHTML = `
+        <div class="flex items-start gap-3">
+            <div class="shrink-0">
+                <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl ${accent}">
+                    <i class="fas ${icon}"></i>
+                </span>
+            </div>
+
+            <div class="min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-white text-[10px] font-bold ${badge}">
+                            ${escapeHtml(title)}
+                        </span>
+                        <span class="text-[11px] text-secondary truncate">
+                            <b class="text-[color:var(--color-text)]">${safeImmat}</b>
+                            <span class="mx-1">•</span>
+                            ${safeUser}
+                        </span>
+                    </div>
+
+                    <button type="button"
+                            class="text-secondary hover:text-[color:var(--color-text)]"
+                            style="padding:6px;border-radius:10px;"
+                            title="Fermer"
+                            onclick="(function(btn){ const root=btn.closest('.ui-card'); if(root){ ccCloseToast(root); } })(this)">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div class="rounded-xl px-3 py-2 bg-[color:var(--color-sidebar-active-bg)]">
+                        <div class="text-[10px] uppercase font-semibold text-secondary">Téléphone</div>
+                        <div class="text-[12px] font-semibold" style="color: var(--color-text);">
+                            ${safePhone}
+                        </div>
+                    </div>
+
+                    <div class="md:col-span-2 rounded-xl px-3 py-2 bg-[color:var(--color-sidebar-active-bg)]">
+                        <div class="text-[10px] uppercase font-semibold text-secondary">Script Call Center</div>
+                        <div class="text-[12px] mt-0.5 leading-5" style="color: var(--color-text);">
+                            ${safeScript}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 flex items-center gap-2">
+                    <button type="button"
+                            class="ui-btn-primary text-[11px] px-3 py-2 rounded-xl"
+                            onclick="(function(){
+                                const t=${JSON.stringify((scriptText||'') + (phone ? (' (Tel: '+phone+')') : ''))};
+                                if(navigator.clipboard && navigator.clipboard.writeText){
+                                    navigator.clipboard.writeText(t).catch(()=>{});
+                                }
+                            })()">
+                        <i class="fas fa-copy mr-1"></i> Copier le script
+                    </button>
+
+                    <button type="button"
+                            class="text-[11px] px-3 py-2 rounded-xl border"
+                            style="border-color: var(--color-border-subtle); color: var(--color-text);"
+                            onclick="(function(btn){ const root=btn.closest('.ui-card'); if(root){ ccCloseToast(root); } })(this)">
+                        Ok
+                    </button>
+
+                    <span class="ml-auto text-[10px] text-secondary">Auto-fermeture ~ ${Math.round(durationMs/1000)}s</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    wrap.appendChild(el);
+
+    requestAnimationFrame(() => {
+        el.classList.remove('cc-toast-enter');
+        el.classList.add('cc-toast-in');
     });
-    lastAlertsByType = o;
+
+    setTimeout(() => ccCloseToast(el), durationMs);
+}
+
+function normalizeImmat(v) {
+    const s = String(v || '').trim();
+    return s ? s.toUpperCase() : null;
+}
+
+function buildFleetIndex(fleet) {
+    const byId = {};
+    const byImmat = {};
+    (Array.isArray(fleet) ? fleet : []).forEach(v => {
+        if (v && v.id != null) byId[String(v.id)] = v;
+        const imm = normalizeImmat(v?.immatriculation);
+        if (imm) byImmat[imm] = v;
+    });
+    return { byId, byImmat };
+}
+
+/**
+ * ✅ IMPORTANT: utilisateur = trouvé "à partir du véhicule"
+ * On supporte plusieurs shapes possibles dans le payload fleet:
+ * - vehicle.primary_user
+ * - vehicle.user
+ * - vehicle.driver
+ * - vehicle.chauffeur
+ */
+function getUserFromVehicle(vehicle) {
+    if (!vehicle) return null;
+    return vehicle.primary_user || vehicle.user || vehicle.driver || vehicle.chauffeur || null;
+}
+
+function formatUserName(user) {
+    if (!user) return 'Aucun utilisateur associé';
+    const full = `${user.prenom || ''} ${user.nom || ''}`.trim();
+    return full || 'Utilisateur';
+}
+
+function extractPhoneFromUser(user) {
+    const p = user?.phone;
+    return p ? String(p) : '—';
+}
+
+// Lookup AJAX optionnel si le fleet ne contient pas phone
+async function lookupCallCenterUser(vehicleId) {
+    const vid = vehicleId != null ? String(vehicleId) : null;
+    if (!vid) return null;
+
+    if (userCacheByVehicleId[vid]) return userCacheByVehicleId[vid];
+
+    if (!CC_LOOKUP_TEMPLATE) return null; // route pas disponible
+
+    const url = String(CC_LOOKUP_TEMPLATE).replace('__ID__', encodeURIComponent(vid));
+
+    try {
+        const res = await fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+        if (!res.ok) return null;
+        const json = await res.json();
+        const u = json?.user || null;
+        if (u) userCacheByVehicleId[vid] = u;
+        return u;
+    } catch (e) {
+        return null;
+    }
+}
+
+function buildCallCenterScript(type, immat, userName, phone, raw) {
+    const t = String(type || '').toLowerCase();
+    const dir = String(raw?.direction || raw?.geo_direction || '').toLowerCase(); // enter/exit
+    const zone = raw?.zone_name || raw?.geofence_name || raw?.safe_zone_name || null;
+    const speed = raw?.speed || raw?.speed_kmh || null;
+    const when = raw?.time || raw?.alerted_at || null;
+    const whenTxt = when ? ` (à ${String(when)})` : '';
+
+    if (t === 'geofence') {
+        const action = dir === 'enter' ? 'est revenue dans sa zone' : (dir === 'exit' ? 'est sortie de sa zone' : 'a déclenché une alerte Geofence');
+        return `La voiture immatriculée ${immat} associée à ${userName} ${action}${zone ? ` (zone: ${zone})` : ''}${whenTxt}. Merci d’appeler au ${phone} pour confirmer la situation et vérifier la trajectoire.`;
+    }
+    if (t === 'safe_zone') {
+        const action = dir === 'enter' ? 'est entrée dans la zone sûre' : (dir === 'exit' ? 'est sortie de la zone sûre' : 'a déclenché une alerte Safe Zone');
+        return `Alerte Safe Zone : la voiture ${immat} (${userName}) ${action}${zone ? ` (zone: ${zone})` : ''}${whenTxt}. Appelez le ${phone} pour confirmer la mission et la position actuelle.`;
+    }
+    if (t === 'speed') {
+        const sp = speed ? `${speed} km/h` : 'une vitesse élevée';
+        return `Alerte Vitesse : la voiture ${immat} associée à ${userName} roule à ${sp}${whenTxt}. Merci d’appeler au ${phone} pour demander de ralentir et confirmer les conditions de route.`;
+    }
+    if (t === 'offline') {
+        return `Alerte Offline : le GPS de la voiture ${immat} (${userName}) ne répond plus${whenTxt}. Contactez le ${phone} pour vérifier l’état du GPS, la batterie et la couverture réseau.`;
+    }
+    if (t === 'time_zone') {
+        return `Alerte Time Zone : la voiture ${immat} associée à ${userName} est active hors plage horaire autorisée${whenTxt}. Merci d’appeler le ${phone} pour vérifier la raison et valider l’autorisation.`;
+    }
+    if (t === 'low_battery') {
+        return `Alerte Batterie Faible : la voiture ${immat} (${userName}) signale un niveau de batterie bas${whenTxt}. Appelez le ${phone} pour planifier un passage recharge/swap et éviter une immobilisation.`;
+    }
+    if (t === 'stolen') {
+        return `Alerte Vol : la voiture ${immat} associée à ${userName} a déclenché une alerte critique${whenTxt}. Appelez immédiatement le ${phone}. Si non joignable, escaladez selon la procédure sécurité.`;
+    }
+    return `Alerte ${t} : la voiture ${immat} associée à ${userName} a déclenché une alerte${whenTxt}. Contact: ${phone}.`;
+}
+
+/**
+ * ✅ Déclencheur popup/son sur NOUVELLE ALERTE (pas sur compteur)
+ * On utilise payload.alerts (liste des dernières alertes) et alert.id comme vérité.
+ *
+ * Attendu côté SSE (idéal):
+ * payload.alerts = [{ id, type, vehicle_id, immatriculation, ... }]
+ */
+async function handleIncomingAlerts(payload, fleet) {
+    const alerts = Array.isArray(payload?.alerts) ? payload.alerts : [];
+    if (!alerts.length) return;
+
+    // 1er snapshot SSE = on init seulement (pas popup)
+    if (ccFirstSnapshot) {
+        const maxId = Math.max(...alerts.map(a => Number(a?.id || 0)));
+        if (Number.isFinite(maxId)) lastSeenAlertId = maxId;
+        ccFirstSnapshot = false;
+        return;
+    }
+
+    // on prend toutes les alertes strictement nouvelles (id > lastSeenAlertId)
+    const fresh = alerts
+        .filter(a => Number(a?.id || 0) > Number(lastSeenAlertId || 0))
+        .sort((a,b) => Number(a?.id||0) - Number(b?.id||0));
+
+    if (!fresh.length) return;
+
+    // on déclenche pour la plus récente (1 popup par event SSE)
+    const a = fresh[fresh.length - 1];
+    lastSeenAlertId = Math.max(Number(lastSeenAlertId || 0), Number(a?.id || 0));
+
+    const type = String(a?.type || '').toLowerCase();
+    if (!type) return;
+
+    const { byId, byImmat } = buildFleetIndex(fleet);
+
+    const aVehicleId = a?.vehicle_id ?? a?.voiture_id ?? a?.vehicle?.id ?? a?.voiture?.id ?? null;
+    const aImmat = normalizeImmat(a?.immatriculation ?? a?.vehicle_immatriculation ?? a?.plate ?? a?.voiture?.immatriculation);
+
+    let vehicle = null;
+    if (aVehicleId != null && byId[String(aVehicleId)]) vehicle = byId[String(aVehicleId)];
+    else if (aImmat && byImmat[aImmat]) vehicle = byImmat[aImmat];
+
+    // si on ne retrouve pas le véhicule, on joue juste le son (pas de confusion)
+    if (!vehicle) {
+        playAlertSound(type);
+        return;
+    }
+
+    // utilisateur depuis véhicule (pas l’inverse)
+    let user = getUserFromVehicle(vehicle);
+
+    // si pas de user/phone dans fleet, on tente le lookup AJAX (optionnel)
+    if ((!user || !user.phone) && aVehicleId != null) {
+        const looked = await lookupCallCenterUser(aVehicleId);
+        if (looked) user = looked;
+    }
+
+    const immat = aImmat || vehicle?.immatriculation || '—';
+    const userName = formatUserName(user);
+    const phone = extractPhoneFromUser(user);
+
+    // SON + POPUP ensemble
+    playAlertSound(type);
+
+    const scriptText = buildCallCenterScript(type, immat, userName, phone, a);
+
+    ccPushToast({
+        type,
+        immatriculation: immat,
+        userDisplayName: userName,
+        phone,
+        scriptText
+    });
 }
 
 // =====================
@@ -283,7 +554,6 @@ function initFleetMap() {
     renderMarkers(vehiclesData, true);
     initVehicleSearch();
 
-    initLastAlertCountersFromDom();
     startDashboardSSE();
 }
 
@@ -294,7 +564,7 @@ function startDashboardSSE() {
 
     dashboardSSE.addEventListener('hello', () => setSseIndicator('connected'));
 
-    dashboardSSE.addEventListener('dashboard', (e) => {
+    dashboardSSE.addEventListener('dashboard', async (e) => {
         setSseIndicator('connected');
 
         let payload = null;
@@ -310,32 +580,7 @@ function startDashboardSSE() {
             if (lu) lu.textContent = `Maj: ${payload.ts}`;
         }
 
-        // 1) STATS GLOBAL
-        if (payload.stats) {
-            applyStats(payload.stats);
-
-            const byTypeFromStats = payload.stats.alertsByType || payload.stats.alerts_by_type || null;
-            if (byTypeFromStats) {
-                // 🔊 son si augmentation
-                detectAndPlaySounds(byTypeFromStats);
-                applyAlertTypeStats(byTypeFromStats);
-            }
-        }
-
-        // 2) ALERT SUMMARY (recommandé)
-        if (payload.alerts_summary && payload.alerts_summary.by_type) {
-            // 🔊 son si augmentation
-            detectAndPlaySounds(payload.alerts_summary.by_type);
-
-            applyAlertTypeStats(payload.alerts_summary.by_type);
-
-            if (typeof payload.alerts_summary.total !== 'undefined') {
-                const el = document.getElementById('stat-alerts');
-                if (el) el.textContent = String(payload.alerts_summary.total);
-            }
-        }
-
-        // 3) FLEET (liste + map)
+        // 1) Fleet
         const fleet = Array.isArray(payload.fleet) ? payload.fleet : [];
         vehiclesData = fleet;
 
@@ -343,6 +588,23 @@ function startDashboardSSE() {
         renderMarkers(fleet, false);
         updateStatusPills(fleet);
         updateSelectedInfoWindow(fleet);
+
+        // 2) Stats
+        if (payload.stats) {
+            applyStats(payload.stats);
+            const byTypeFromStats = payload.stats.alertsByType || payload.stats.alerts_by_type || null;
+            if (byTypeFromStats) applyAlertTypeStats(byTypeFromStats);
+        }
+        if (payload.alerts_summary && payload.alerts_summary.by_type) {
+            applyAlertTypeStats(payload.alerts_summary.by_type);
+            if (typeof payload.alerts_summary.total !== 'undefined') {
+                const el = document.getElementById('stat-alerts');
+                if (el) el.textContent = String(payload.alerts_summary.total);
+            }
+        }
+
+        // 3) ✅ NOUVELLES ALERTES (popup/son) sur alert.id
+        await handleIncomingAlerts(payload, fleet);
     });
 
     dashboardSSE.onerror = () => setSseIndicator('reconnecting');
@@ -383,8 +645,6 @@ function applyStats(stats) {
         if (el && v !== undefined && v !== null) el.textContent = String(v);
     };
 
-    // NB: tu n’affiches pas stat-users/stat-associations dans ce template,
-    // mais on laisse au cas où tu les ajoutes plus tard.
     set('stat-users', stats.usersCount);
     set('stat-vehicles', stats.vehiclesCount);
     set('stat-associations', stats.associationsCount);
