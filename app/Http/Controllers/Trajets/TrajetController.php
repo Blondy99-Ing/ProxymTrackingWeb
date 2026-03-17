@@ -5,510 +5,188 @@ namespace App\Http\Controllers\Trajets;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Trajet;
-use App\Models\Voiture;
-use App\Models\Location;
 use Carbon\Carbon;
-use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 class TrajetController extends Controller
 {
     /**
-     * Tous les trajets (tous véhicules)
+     * Liste JSON des trajets pour le dashboard
+     * Compatible avec le dashboard partenaire
      */
     public function index(Request $request)
     {
-        $query = Trajet::with('voiture');
+        $tz = 'Africa/Douala';
+
+        $query = Trajet::query()
+            ->with(['voiture']);
 
         /**
-         * 1) Dates :
-         * - priorité à start_date/end_date (si renseignés)
-         * - sinon quick (si renseigné)
-         * - sinon aucun filtre date
+         * 1) Filtre véhicule
+         * - interne = tous les véhicules
          */
-        $this->applyIndexDateFilters($query, $request, 'start_time');
-
-        /**
-         * 2) Véhicule (priorité vehicle_id)
-         */
-        $selectedVehicle = null;
-
         if ($request->filled('vehicle_id')) {
-            $query->where('vehicle_id', $request->vehicle_id);
-            $selectedVehicle = Voiture::select('id', 'immatriculation')->find($request->vehicle_id);
-        } elseif ($request->filled('vehicule')) {
-            $query->whereHas('voiture', function ($q) use ($request) {
-                $q->where('immatriculation', 'LIKE', '%' . $request->vehicule . '%');
-            });
+            $query->where('vehicle_id', (int) $request->vehicle_id);
         }
 
         /**
-         * 3) Filtre heures (robuste)
+         * 2) Filtres date compatibles partenaire
+         * quick=today|yesterday|this_week|this_month
+         * ou start_date/end_date
          */
-        $this->applyTimeOfDayFilter($query, $request, 'start_time');
+        $quick = $request->query('quick', $request->query('date_quick', 'today'));
+        $now   = now($tz);
+
+        if ($quick && $quick !== 'range') {
+            switch ($quick) {
+                case 'today':
+                    $query->whereDate('start_time', $now->toDateString());
+                    break;
+
+                case 'yesterday':
+                    $query->whereDate('start_time', $now->copy()->subDay()->toDateString());
+                    break;
+
+                case 'this_week':
+                    $query->whereBetween('start_time', [
+                        $now->copy()->startOfWeek(),
+                        $now->copy()->endOfWeek(),
+                    ]);
+                    break;
+
+                case 'this_month':
+                    $query->whereBetween('start_time', [
+                        $now->copy()->startOfMonth(),
+                        $now->copy()->endOfMonth(),
+                    ]);
+                    break;
+            }
+        } elseif ($request->filled('start_date')) {
+            $start = Carbon::parse($request->start_date, $tz)->startOfDay();
+            $end   = Carbon::parse($request->end_date ?? $request->start_date, $tz)->endOfDay();
+
+            $query->whereBetween('start_time', [$start, $end]);
+        }
 
         /**
-         * 4) Pagination
+         * 3) Pagination
          */
+        $perPage = (int) $request->query('per_page', 20);
+        $perPage = min(max($perPage, 1), 200);
+
         $trajets = $query
             ->orderByDesc('start_time')
             ->orderByDesc('id')
-            ->paginate(20)
-            ->appends($request->query());
-
-        $vehicles = Voiture::select('id', 'immatriculation')
-            ->orderBy('immatriculation')
-            ->get();
-
-        return view('trajets.index', compact('trajets', 'vehicles', 'selectedVehicle'));
-    }
-
-
-    /**
-     * Trajets d’un véhicule + focus trajet + tracks
-     *
-     * Route: /voitures/{id}/trajets  name: voitures.trajets
-     */
-    public function byVoiture($id, Request $request)
-    {
-        $voiture = Voiture::findOrFail($id);
-
-        // Liste véhicules (switch véhicule depuis la vue)
-        $vehicles = Voiture::select('id', 'immatriculation')
-            ->orderBy('immatriculation')
-            ->get();
-
-        $perPage = 20;
+            ->paginate($perPage);
 
         /**
-         * Focus trajet
+         * 4) Réponse JSON compatible dashboard partenaire
          */
-        $focusId = $request->query('focus_trajet_id');
-        $focusTrajet = null;
-
-        if ($focusId) {
-            $focusTrajet = Trajet::where('vehicle_id', $id)
-                ->where('id', $focusId)
-                ->first();
-        }
-
-        /**
-         * ✅ Si on arrive via "Détails" et qu'aucun filtre date n'est fourni,
-         * on force une URL stable sur la date du trajet focus
-         */
-        $hasAnyExplicitDateFilter =
-            $request->filled('quick') ||
-            $request->filled('date') ||
-            $request->filled('start_date') ||
-            $request->filled('end_date');
-
-        if ($focusTrajet && !$hasAnyExplicitDateFilter) {
-            $params = $request->query();
-            $params['quick'] = 'date';
-            $params['date']  = Carbon::parse($focusTrajet->start_time)->toDateString();
-
-            return redirect()->to(
-                route('voitures.trajets', ['id' => $id] + $params) . '#trajet-' . $focusId
-            );
-        }
-
-        /**
-         * ✅ MODE DETAIL : afficher uniquement le trajet focus (sans filtrer par quick/time etc.)
-         * - utile quand on clique "Détails"
-         */
-        $mode = $request->query('mode'); // 'detail' ou null
-
-        if ($mode === 'detail' && $focusTrajet) {
-            $shown = collect([$focusTrajet]);
-
-            // paginator "fake" pour garder la vue compatible (count(), links() optionnel)
-            $trajets = new LengthAwarePaginator(
-                $shown,
-                1,   // total
-                1,   // perPage
-                1,   // currentPage
-                [
-                    'path'  => url()->current(),
-                    'query' => $request->query(),
-                ]
-            );
-
-            [$totalDistance, $totalDuration, $maxSpeed, $avgSpeed] = $this->statsFromDbFields($shown);
-            $tracks = $this->buildTracks($shown, $voiture, $focusId);
-
-            return view('trajets.byVoiture', [
-                'voiture'       => $voiture,
-                'vehicles'      => $vehicles,
-                'trajets'       => $trajets,
-                'tracks'        => $tracks,
-                'filters'       => $request->all(),
-                'totalDistance' => $totalDistance,
-                'totalDuration' => $totalDuration,
-                'maxSpeed'      => $maxSpeed,
-                'avgSpeed'      => $avgSpeed,
-                'focusId'       => $focusId,
-                'focusTrajet'   => $focusTrajet,
-                'mode'          => $mode,
-            ]);
-        }
-
-        /**
-         * ✅ Query de base (liste filtrée)
-         */
-        $query = Trajet::where('vehicle_id', $id);
-
-        /**
-         * ✅ Filtres dates (par défaut today si rien)
-         */
-        $this->applyByVoitureDateFilters($query, $request, 'start_time');
-
-        /**
-         * ✅ Filtres heures
-         */
-        $this->applyTimeOfDayFilter($query, $request, 'start_time');
-
-        /**
-         * ✅ Si focus => tomber sur la page qui contient ce trajet (dans l’ensemble filtré)
-         * IMPORTANT : en mode liste uniquement
-         */
-        if ($focusTrajet) {
-            $existsInFilteredSet = (clone $query)->where('id', $focusTrajet->id)->exists();
-
-            if ($existsInFilteredSet) {
-                $ordered = (clone $query)
-                    ->orderByDesc('start_time')
-                    ->orderByDesc('id');
-
-                $beforeCount = (clone $ordered)
-                    ->where(function ($q) use ($focusTrajet) {
-                        $q->where('start_time', '>', $focusTrajet->start_time)
-                          ->orWhere(function ($q) use ($focusTrajet) {
-                              $q->where('start_time', '=', $focusTrajet->start_time)
-                                ->where('id', '>', $focusTrajet->id);
-                          });
-                    })
-                    ->count();
-
-                $targetPage  = intdiv($beforeCount, $perPage) + 1;
-                $currentPage = (int) $request->query('page', 1);
-
-                if ($currentPage !== $targetPage) {
-                    $params = $request->query();
-                    $params['page'] = $targetPage;
-
-                    return redirect()->to(
-                        route('voitures.trajets', ['id' => $id] + $params) . '#trajet-' . $focusId
-                    );
-                }
-            }
-        }
-
-        /**
-         * ✅ Pagination (tableau)
-         */
-        $trajets = (clone $query)
-            ->orderByDesc('start_time')
-            ->orderByDesc('id')
-            ->paginate($perPage)
-            ->appends($request->query());
-
-        $shown = $trajets->getCollection();
-
-        /**
-         * ✅ Stats cohérentes avec CE QUI EST AFFICHÉ
-         */
-        [$totalDistance, $totalDuration, $maxSpeed, $avgSpeed] = $this->statsFromDbFields($shown);
-
-        /**
-         * ✅ Tracks depuis locations
-         */
-        $tracks = $this->buildTracks($shown, $voiture, $focusId);
-
-        return view('trajets.byVoiture', [
-            'voiture'       => $voiture,
-            'vehicles'      => $vehicles,
-            'trajets'       => $trajets,
-            'tracks'        => $tracks,
-            'filters'       => $request->all(),
-            'totalDistance' => $totalDistance,
-            'totalDuration' => $totalDuration,
-            'maxSpeed'      => $maxSpeed,
-            'avgSpeed'      => $avgSpeed,
-            'focusId'       => $focusId,
-            'focusTrajet'   => $focusTrajet,
-            'mode'          => $mode,
+        return response()->json([
+            'status' => 'success',
+            'data' => collect($trajets->items())->map(function ($t) {
+                return [
+                    'id'                => $t->id,
+                    'vehicle_id'        => $t->vehicle_id,
+                    'immatriculation'   => $t->voiture?->immatriculation,
+                    'driver_label'      => $t->voiture?->users_labels ?? 'Inconnu',
+                    'start_time'        => $t->start_time,
+                    'end_time'          => $t->end_time,
+                    'duration_minutes'  => (int) ($t->duration_minutes ?? 0),
+                    'total_distance_km' => round((float) ($t->total_distance_km ?? 0), 2),
+                    'avg_speed_kmh'     => round((float) ($t->avg_speed_kmh ?? 0), 1),
+                    'max_speed_kmh'     => round((float) ($t->max_speed_kmh ?? 0), 1),
+                ];
+            })->values(),
+            'meta' => [
+                'current_page' => $trajets->currentPage(),
+                'total'        => $trajets->total(),
+                'last_page'    => $trajets->lastPage(),
+            ],
         ]);
     }
 
-
     /**
-     * Dates pour INDEX:
-     * - start_date/end_date prioritaire
-     * - sinon quick
-     * - sinon rien
+     * Détail JSON d’un trajet + points GPS pour la carte / replay
+     * Compatible avec :
+     * - /trajets/show/{voiture_id}/{trajet_id}
+     * - /trajets/{vehicle_id}/detail/{trajet_id}
      */
-    private function applyIndexDateFilters($query, Request $request, string $column): void
+    public function showTrajet($vehicle_id, $trajet_id, Request $request)
     {
-        $hasRange = $request->filled('start_date') || $request->filled('end_date');
+        $trajet = Trajet::with('voiture')
+            ->where('id', $trajet_id)
+            ->where('vehicle_id', $vehicle_id)
+            ->firstOrFail();
 
-        if ($hasRange) {
-            if ($request->filled('start_date')) {
-                $query->whereDate($column, '>=', $request->start_date);
-            }
-            if ($request->filled('end_date')) {
-                $query->whereDate($column, '<=', $request->end_date);
-            }
-            return;
-        }
+        $macId = $trajet->mac_id_gps ?: $trajet->voiture?->mac_id_gps;
 
-        if ($request->filled('quick')) {
-            switch ($request->quick) {
-                case 'today':
-                    $query->whereDate($column, now());
-                    break;
-                case 'yesterday':
-                    $query->whereDate($column, now()->subDay());
-                    break;
-                case 'week':
-                    $query->whereBetween($column, [now()->startOfWeek(), now()->endOfWeek()]);
-                    break;
-                case 'month':
-                    $query->whereBetween($column, [now()->startOfMonth(), now()->endOfMonth()]);
-                    break;
-                case 'year':
-                    $query->whereYear($column, now()->year);
-                    break;
-            }
-        }
-    }
+        $points = collect();
 
-
-    /**
-     * Dates pour BYVOITURE:
-     * - si quick vide mais date/range renseigné => on respecte date/range
-     * - sinon défaut today
-     */
-    private function applyByVoitureDateFilters($query, Request $request, string $column): void
-    {
-        $quick = $request->input('quick');
-        $quick = is_string($quick) ? trim($quick) : $quick;
-        if ($quick === '') $quick = null;
-
-        if (!$quick) {
-            if ($request->filled('date')) {
-                $quick = 'date';
-            } elseif ($request->filled('start_date') || $request->filled('end_date')) {
-                $quick = 'range';
-            } else {
-                $quick = 'today';
-            }
-        }
-
-        switch ($quick) {
-            case 'today':
-                $query->whereDate($column, now());
-                break;
-
-            case 'yesterday':
-                $query->whereDate($column, now()->subDay());
-                break;
-
-            case 'week':
-                $query->whereBetween($column, [now()->startOfWeek(), now()->endOfWeek()]);
-                break;
-
-            case 'month':
-                $query->whereBetween($column, [now()->startOfMonth(), now()->endOfMonth()]);
-                break;
-
-            case 'year':
-                $query->whereYear($column, now()->year);
-                break;
-
-            case 'date':
-                if ($request->filled('date')) {
-                    $query->whereDate($column, $request->date);
-                }
-                break;
-
-            case 'range':
-                if ($request->filled('start_date')) {
-                    $query->whereDate($column, '>=', $request->start_date);
-                }
-                if ($request->filled('end_date')) {
-                    $query->whereDate($column, '<=', $request->end_date);
-                }
-                break;
-        }
-    }
-
-
-    /**
-     * Filtre heures robuste (gère 22:00->06:00)
-     */
-    private function applyTimeOfDayFilter($query, Request $request, string $column): void
-    {
-        $startT = $request->input('start_time');
-        $endT   = $request->input('end_time');
-
-        if ($startT && $endT) {
-            if ($startT <= $endT) {
-                $query->whereTime($column, '>=', $startT)
-                      ->whereTime($column, '<=', $endT);
-            } else {
-                $query->where(function ($q) use ($column, $startT, $endT) {
-                    $q->whereTime($column, '>=', $startT)
-                      ->orWhereTime($column, '<=', $endT);
-                });
-            }
-            return;
-        }
-
-        if ($startT) $query->whereTime($column, '>=', $startT);
-        if ($endT)   $query->whereTime($column, '<=', $endT);
-    }
-
-
-    /**
-     * Stats BD cohérentes avec le tableau affiché
-     */
-    private function statsFromDbFields($trajetsCollection): array
-    {
-        $totalDistance = 0.0;
-        $totalDuration = 0;
-        $maxSpeed      = 0.0;
-        $avgSpeed      = 0.0;
-
-        if ($trajetsCollection->count() === 1) {
-            $t = $trajetsCollection->first();
-            $totalDistance = (float) ($t->total_distance_km ?? 0);
-            $totalDuration = (int)   ($t->duration_minutes ?? 0);
-            $maxSpeed      = (float) ($t->max_speed_kmh ?? 0);
-            $avgSpeed      = (float) ($t->avg_speed_kmh ?? 0);
-        } elseif ($trajetsCollection->count() > 1) {
-            $totalDistance = (float) $trajetsCollection->sum(fn($x) => (float) ($x->total_distance_km ?? 0));
-            $totalDuration = (int)   $trajetsCollection->sum(fn($x) => (int)   ($x->duration_minutes ?? 0));
-            $maxSpeed      = (float) $trajetsCollection->max('max_speed_kmh');
-
-            // moyenne pondérée par durée
-            $sumWeighted = 0.0;
-            $sumWeight   = 0.0;
-
-            foreach ($trajetsCollection as $tr) {
-                $dur = (float) ($tr->duration_minutes ?? 0);
-                $spd = (float) ($tr->avg_speed_kmh ?? 0);
-                if ($dur > 0) {
-                    $sumWeighted += ($spd * $dur);
-                    $sumWeight   += $dur;
-                }
-            }
-
-            $avgSpeed = ($sumWeight > 0)
-                ? ($sumWeighted / $sumWeight)
-                : (float) $trajetsCollection->avg('avg_speed_kmh');
-        }
-
-        return [
-            round($totalDistance, 1),
-            (int) $totalDuration,
-            round($maxSpeed, 1),
-            round($avgSpeed, 1),
-        ];
-    }
-
-
-    /**
-     * Tracks exacts depuis locations
-     * - En focus, on autorise plus de points/rows => tracé plus fidèle.
-     */
-    private function buildTracks($trajetsCollection, Voiture $voiture, $focusId = null): array
-    {
-        $tracks = [];
-
-        foreach ($trajetsCollection as $t) {
-
-            $isFocusTrip = $focusId && ((int)$t->id === (int)$focusId);
-
-            $maxPoints = (int) ($isFocusTrip
-                ? env('TRACK_MAX_POINTS_FOCUS', 20000)
-                : env('TRACK_MAX_POINTS', 1500)
-            );
-
-            $maxDbRows = (int) ($isFocusTrip
-                ? env('TRACK_MAX_DB_ROWS_FOCUS', 120000)
-                : env('TRACK_MAX_DB_ROWS', 20000)
-            );
-
-            $mac = $t->mac_id_gps ?: $voiture->mac_id_gps;
-            if (empty($mac)) continue;
-
-            $start = Carbon::parse($t->start_time);
-            $end   = $t->end_time ? Carbon::parse($t->end_time) : (clone $start)->addHours(3);
-
-            $startQ = (clone $start)->subMinutes(2);
-            $endQ   = (clone $end)->addMinutes(2);
-
-            $locs = Location::query()
-                ->select(['latitude', 'longitude', 'datetime', 'speed'])
-                ->where('mac_id_gps', $mac)
-                ->whereBetween('datetime', [$startQ, $endQ])
-                ->whereNotNull('latitude')
-                ->whereNotNull('longitude')
-                ->where('latitude', '!=', 0)
-                ->where('longitude', '!=', 0)
+        if ($macId) {
+            $points = DB::table('locations')
+                ->where('mac_id_gps', $macId)
+                ->whereBetween('datetime', [
+                    $trajet->start_time,
+                    $trajet->end_time ?? now(),
+                ])
+                ->select([
+                    'latitude as lat',
+                    'longitude as lng',
+                    'datetime as ts',
+                    'speed',
+                ])
                 ->orderBy('datetime', 'asc')
-                ->limit($maxDbRows)
                 ->get();
-
-            if ($locs->count() < 2) {
-                $tracks[] = [
-                    'trajet_id'  => $t->id,
-                    'start_time' => $start->format('Y-m-d H:i:s'),
-                    'end_time'   => $end->format('Y-m-d H:i:s'),
-                    'start' => ['lat' => (float) $t->start_latitude, 'lng' => (float) $t->start_longitude],
-                    'end'   => ['lat' => (float) $t->end_latitude,   'lng' => (float) $t->end_longitude],
-                    'points' => [],
-                ];
-                continue;
-            }
-
-            $points = [];
-            $prevKey = null;
-
-            foreach ($locs as $l) {
-                $lat = (float) $l->latitude;
-                $lng = (float) $l->longitude;
-
-                $key = number_format($lat, 6) . ',' . number_format($lng, 6);
-                if ($key === $prevKey) continue;
-                $prevKey = $key;
-
-                $points[] = [
-                    'lat'   => $lat,
-                    'lng'   => $lng,
-                    't'     => $l->datetime ? Carbon::parse($l->datetime)->format('Y-m-d H:i:s') : null,
-                    'speed' => (float) ($l->speed ?? 0),
-                ];
-            }
-
-            if (count($points) > $maxPoints) {
-                $step = (int) ceil(count($points) / $maxPoints);
-                $reduced = [];
-                for ($i = 0; $i < count($points); $i += $step) $reduced[] = $points[$i];
-                $last = end($points);
-                if ($last && (empty($reduced) || $reduced[count($reduced) - 1] !== $last)) $reduced[] = $last;
-                $points = $reduced;
-            }
-
-            $tracks[] = [
-                'trajet_id'  => $t->id,
-                'start_time' => $start->format('Y-m-d H:i:s'),
-                'end_time'   => $end->format('Y-m-d H:i:s'),
-                'start' => ['lat' => (float) $points[0]['lat'], 'lng' => (float) $points[0]['lng']],
-                'end'   => ['lat' => (float) $points[count($points) - 1]['lat'], 'lng' => (float) $points[count($points) - 1]['lng']],
-                'points' => $points,
-            ];
         }
 
-        return $tracks;
+        /**
+         * Fallback si aucun point GPS trouvé
+         * Attention: dans l’interne les colonnes sont
+         * start_latitude / start_longitude / end_latitude / end_longitude
+         */
+        if ($points->isEmpty() && $trajet->start_latitude && $trajet->start_longitude) {
+            $fallback = [
+                [
+                    'lat'   => (float) $trajet->start_latitude,
+                    'lng'   => (float) $trajet->start_longitude,
+                    'ts'    => $trajet->start_time,
+                    'speed' => 0,
+                ],
+            ];
+
+            if ($trajet->end_latitude && $trajet->end_longitude) {
+                $fallback[] = [
+                    'lat'   => (float) $trajet->end_latitude,
+                    'lng'   => (float) $trajet->end_longitude,
+                    'ts'    => $trajet->end_time ?? now(),
+                    'speed' => 0,
+                ];
+            }
+
+            $points = collect($fallback);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'trajet' => [
+                    'id'              => $trajet->id,
+                    'immatriculation' => $trajet->voiture?->immatriculation ?? '—',
+                    'start_time'      => $trajet->start_time,
+                    'end_time'        => $trajet->end_time,
+                    'stats' => [
+                        'distance'  => round((float) ($trajet->total_distance_km ?? 0), 2),
+                        'duration'  => (int) ($trajet->duration_minutes ?? 0),
+                        'max_speed' => round((float) ($trajet->max_speed_kmh ?? 0), 1),
+                        'avg_speed' => round((float) ($trajet->avg_speed_kmh ?? 0), 1),
+                    ],
+                ],
+                'track' => [
+                    'points' => $points->values(),
+                    'count'  => $points->count(),
+                ],
+            ],
+        ]);
     }
 }

@@ -11,21 +11,30 @@ class DashboardWebhookController extends Controller
 
     public function refresh(Request $request)
     {
-        // ✅ Protection par secret (header)
-        $secret   = (string) $request->header('X-INTERNAL-SECRET');
-
-        // ✅ CORRECTION: services.php => services.internal.webhook_secret
+        $secret = (string) $request->header('X-INTERNAL-SECRET');
         $expected = (string) config('services.internal.webhook_secret');
 
         if (!$expected || !$secret || !hash_equals($expected, $secret)) {
-            return response()->json(['ok' => false, 'message' => 'Unauthorized'], 401);
+            return response()->json([
+                'ok' => false,
+                'message' => 'Unauthorized',
+            ], 401);
         }
 
-        // what = all | stats | fleet | alerts | alerts_top
-        $what = (string) $request->input('what', 'all');
+        $what = strtolower((string) $request->input('what', 'all'));
+
+        $allowed = ['all', 'stats', 'fleet', 'alerts', 'alerts_top'];
+        if (!in_array($what, $allowed, true)) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Invalid "what" value',
+                'allowed' => $allowed,
+            ], 422);
+        }
 
         if ($what === 'alerts_top') {
-            $alerts = $this->cache->rebuildAlerts(10);
+            $alerts = $this->cache->rebuildAlertsTop10();
+
             return response()->json([
                 'ok' => true,
                 'what' => 'alerts_top',
@@ -35,6 +44,7 @@ class DashboardWebhookController extends Controller
 
         if ($what === 'alerts') {
             $alerts = $this->cache->rebuildAlerts(10);
+
             return response()->json([
                 'ok' => true,
                 'what' => 'alerts',
@@ -44,6 +54,7 @@ class DashboardWebhookController extends Controller
 
         if ($what === 'fleet') {
             $fleet = $this->cache->rebuildFleet();
+
             return response()->json([
                 'ok' => true,
                 'what' => 'fleet',
@@ -53,6 +64,7 @@ class DashboardWebhookController extends Controller
 
         if ($what === 'stats') {
             $stats = $this->cache->rebuildStats();
+
             return response()->json([
                 'ok' => true,
                 'what' => 'stats',
@@ -60,8 +72,12 @@ class DashboardWebhookController extends Controller
             ]);
         }
 
-        // all
         $all = $this->cache->rebuildAll();
-        return response()->json(['ok' => true, 'what' => 'all', ...$all]);
+
+        return response()->json([
+            'ok' => true,
+            'what' => 'all',
+            ...$all,
+        ]);
     }
 }

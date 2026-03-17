@@ -4,7 +4,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Users\TrackingUserController;
-use App\Http\Controllers\AgenceAuthController;
+
 use App\Http\Controllers\Voitures\VoitureController;
 use App\Http\Controllers\Associations\AssociationController;
 use App\Http\Controllers\VehiclesController;
@@ -35,12 +35,6 @@ use App\Http\Controllers\Trajets\TrajetReplayController;
 
 
 
-//Route::get('login', function () {
-//    return view('auth.login');  // Vue de la page de connexion
-//})->name('login');
-
-Route::post('login', [AgenceAuthController::class, 'authenticate'])->name('login');
-
 Route::middleware(['auth:web'])->group(function () {
 
     // ✅ ADMIN + CALL_CENTER
@@ -50,20 +44,29 @@ Route::middleware(['auth:web'])->group(function () {
         Route::get('/api/fleet-snapshot', [DashboardController::class, 'fleetSnapshot'])
             ->name('fleet.snapshot');
 
-        // Alertes (lecture + mark)
-        Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
-        Route::post('/alerts/{alert}/mark-as-read', [AlertController::class, 'markAsRead'])->name('alerts.markAsRead');
-        Route::post('/alerts/{alert}/mark-as-unread', [AlertController::class, 'markAsUnread'])->name('alerts.markAsUnread');
-
         // SSE
         Route::get('/dashboard/stream', [DashboardController::class,'dashboardStream'])->name('dashboard.stream');
-        Route::get('/sse/alerts', [AlertController::class, 'alertsStream'])->name('alerts.stream');
+
+
+        // Alerts dashboard - JSON only
+Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
+
+// Traitement d'une alerte
+Route::patch('/alerts/{id}/processed', [AlertController::class, 'markAsProcessed'])
+    ->name('alerts.processed');
+ 
 
         // Trajets
-        Route::get('/trajets', [TrajetController::class, 'index'])->name('trajets.index');
-        Route::get('/voitures/{id}/trajets', [TrajetController::class, 'byVoiture'])->name('voitures.trajets');
-        Route::get('/trajets/{trajet}/points', [TrajetReplayController::class, 'points'])
-    ->name('trajets.points');
+       // Trajets
+// Trajets dashboard - JSON only
+Route::get('/trajets', [TrajetController::class, 'index'])->name('trajets.index');
+
+Route::get('/trajets/show/{voiture_id}/{trajet_id}', [TrajetController::class, 'showTrajet'])
+    ->name('trajets.show');
+
+Route::get('/trajets/{vehicle_id}/detail/{trajet_id}', [TrajetController::class, 'showTrajet'])
+    ->name('trajets.detail.api');
+
 
         // Exemple: détails geofence en lecture
         Route::get('/voitures/{id}/geofence', [VoitureController::class, 'detailsVehiculeGeofence'])
@@ -73,7 +76,7 @@ Route::middleware(['auth:web'])->group(function () {
 
 
             //route personnaliser 
-            Route::get('/users/{id}/profile', [ProfileController::class, 'show'])
+        Route::get('/users/{id}/profile', [ProfileController::class, 'show'])
     ->name('users.profile');
     
         // Afficher les utilisateurs 
@@ -96,12 +99,6 @@ Route::prefix('tracking')->name('tracking.')->group(function() {
 // Formulaire pour associer
 Route::get('/association', [AssociationController::class, 'index'])->name('association.index');
 
-// Vue HTML des alertes
-Route::get('/alerts/view', function () {
-    return view('alerts.index'); // le nom du blade fourni
-})->name('alerts.view');
-// Marquer une alerte comme lue
-Route::patch('/alerts/{id}/processed', [AlertController::class, 'markAsProcessed'])->name('alerts.processed');
 
 // route pour la gestion des SIM dans les GPS
 Route::get('/gps-sim', [GpsSimController::class, 'index'])->name('gps_sim.index');
