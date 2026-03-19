@@ -81,7 +81,35 @@ class DashboardController extends Controller
 
             while (!connection_aborted()) {
                 $version = $this->cache->getVersion();
+                $anythingSent = false;
 
+                // ── Alert queues are drained on EVERY cycle, unconditionally. ──
+                // They must NOT be gated behind the version check because multiple
+                // version bumps can happen between two loop iterations (fleet patch
+                // + alert creation within the same 800 ms window). When the loop
+                // wakes up it absorbs all version increments at once into
+                // $lastVersion, and a subsequent cycle sees no version change —
+                // leaving queued alert.new events stranded forever.
+                $drainLimit = 20;
+                while ($drainLimit-- > 0) {
+                    $newAlert = $this->cache->consumeNewAlertEvent();
+                    if ($newAlert === null) break;
+                    echo "event: alert.new\n";
+                    echo "data: " . json_encode($newAlert, JSON_UNESCAPED_UNICODE) . "\n\n";
+                    $anythingSent = true;
+                }
+
+                $drainLimit = 20;
+                while ($drainLimit-- > 0) {
+                    $processedAlert = $this->cache->consumeProcessedAlertEvent();
+                    if ($processedAlert === null) break;
+                    echo "event: alert.processed\n";
+                    echo "data: " . json_encode($processedAlert, JSON_UNESCAPED_UNICODE) . "\n\n";
+                    $anythingSent = true;
+                }
+
+                // ── Fleet / stats events remain version-gated (they are cheap ──
+                // to batch and don't need sub-second latency).
                 if ($version !== $lastVersion) {
                     $lastVersion = $version;
 
@@ -90,6 +118,7 @@ class DashboardController extends Controller
                         echo "data: " . json_encode([
                             'fleet' => $this->cache->getFleetFromRedis(),
                         ], JSON_UNESCAPED_UNICODE) . "\n\n";
+                        $anythingSent = true;
                     } else {
                         $vehicles = $this->cache->consumeDirtyVehicleRows();
                         foreach ($vehicles as $row) {
@@ -97,19 +126,8 @@ class DashboardController extends Controller
                             echo "data: " . json_encode([
                                 'vehicle' => $row,
                             ], JSON_UNESCAPED_UNICODE) . "\n\n";
+                            $anythingSent = true;
                         }
-                    }
-
-                    $newAlert = $this->cache->consumeNewAlertEvent();
-                    if ($newAlert !== null) {
-                        echo "event: alert.new\n";
-                        echo "data: " . json_encode($newAlert, JSON_UNESCAPED_UNICODE) . "\n\n";
-                    }
-
-                    $processedAlert = $this->cache->consumeProcessedAlertEvent();
-                    if ($processedAlert !== null) {
-                        echo "event: alert.processed\n";
-                        echo "data: " . json_encode($processedAlert, JSON_UNESCAPED_UNICODE) . "\n\n";
                     }
 
                     $alerts = $this->cache->consumeDirtyAlerts();
@@ -118,6 +136,7 @@ class DashboardController extends Controller
                         echo "data: " . json_encode([
                             'alerts' => $alerts,
                         ], JSON_UNESCAPED_UNICODE) . "\n\n";
+                        $anythingSent = true;
                     }
 
                     $stats = $this->cache->consumeDirtyStats();
@@ -126,8 +145,11 @@ class DashboardController extends Controller
                         echo "data: " . json_encode([
                             'stats' => $stats,
                         ], JSON_UNESCAPED_UNICODE) . "\n\n";
+                        $anythingSent = true;
                     }
+                }
 
+                if ($anythingSent) {
                     $this->flushNow();
                 } else {
                     echo "event: heartbeat\n";
@@ -137,7 +159,7 @@ class DashboardController extends Controller
                     $this->flushNow();
                 }
 
-                usleep(2000000);
+                usleep(800000);
             }
         }, 200, [
             'Content-Type'      => 'text/event-stream; charset=UTF-8',

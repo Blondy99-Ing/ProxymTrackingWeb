@@ -117,8 +117,8 @@ Route::get('{voiture}/engine-status', [ControlGpsController::class, 'engineStatu
             ->name('voitures.engineStatus');
 Route::get('engine-status/batch', [ControlGpsController::class, 'engineStatusBatch'])
             ->name('voitures.engineStatusBatch');
-Route::post('{voiture}/toggle-engine', [ControlGpsController::class, 'toggleEngine'])
-            ->name('voitures.toggleEngine');
+//Route::post('{voiture}/toggle-engine', [ControlGpsController::class, 'toggleEngine'])
+ //           ->name('voitures.toggleEngine');
 
 
     });

@@ -129,7 +129,7 @@ class DashboardCacheService
             }
 
             $row = json_decode($json, true);
-            return is_array($row) ? $row : null;
+            return is_array($row) ? $this->applyDynamicLiveStatusOnRow($row) : null;
         } catch (\Throwable $e) {
             return null;
         }
@@ -342,7 +342,7 @@ class DashboardCacheService
     public function rebuildFleet(): array
     {
         $voitures = Voiture::query()
-            ->with(['utilisateur:id,prenom,nom'])
+            ->with(['utilisateur:id,prenom,nom,phone'])
             ->select(['id', 'immatriculation', 'marque', 'model', 'mac_id_gps'])
             ->get();
 
@@ -405,7 +405,7 @@ class DashboardCacheService
             $pipe->del(self::KEY_FLEET_H);
 
             if (!empty($hashPayload)) {
-                $pipe->hMSet(self::KEY_FLEET_H, $hashPayload);
+                $pipe->hmset(self::KEY_FLEET_H, $hashPayload);
                 $pipe->expire(self::KEY_FLEET_H, $this->ttlFleet);
             }
 
@@ -454,7 +454,7 @@ class DashboardCacheService
 
         $voitures = Voiture::query()
             ->whereIn('mac_id_gps', $macs)
-            ->with(['utilisateur:id,prenom,nom'])
+            ->with(['utilisateur:id,prenom,nom,phone'])
             ->select(['id', 'immatriculation', 'marque', 'model', 'mac_id_gps'])
             ->get();
 
@@ -496,7 +496,7 @@ class DashboardCacheService
         }
 
         Redis::pipeline(function ($pipe) use ($hashPayload) {
-            $pipe->hMSet(self::KEY_FLEET_H, $hashPayload);
+            $pipe->hmset(self::KEY_FLEET_H, $hashPayload);
             $pipe->expire(self::KEY_FLEET_H, $this->ttlFleet);
         });
 
@@ -538,27 +538,36 @@ class DashboardCacheService
             ->limit($limit)
             ->get()
             ->map(function (Alert $a) {
-                $v = $a->voiture;
-
-                $users = $v?->utilisateur
-                    ?->map(fn($u) => trim(($u->prenom ?? '') . ' ' . ($u->nom ?? '')))
-                    ->filter()
-                    ->implode(', ');
-
-                $typeNorm = $this->normalizeAlertType($a->alert_type);
+                $payload = $this->buildRealtimeAlertPayload($a);
 
                 return [
-                    'id'           => (int) $a->id,
-                    'vehicle_id'   => (int) ($a->voiture_id ?? 0),
-                    'vehicle'      => $v?->immatriculation ?? 'N/A',
-                    'type'         => $typeNorm,
-                    'type_label'   => $this->alertTypeLabel($typeNorm),
-                    'users'        => $users ?: null,
-                    'time'         => optional($a->alerted_at ?? $a->created_at)->format('d/m/Y H:i:s'),
-                    'processed'    => (bool) ($a->processed ?? false),
-                    'status'       => 'Ouvert',
+                    'id' => (int) ($payload['id'] ?? 0),
+                    'vehicle_id' => (int) ($payload['vehicle_id'] ?? 0),
+                    'vehicle' => $payload['vehicle'] ?? null,
+                    'type' => $payload['type'] ?? 'unknown',
+                    'type_label' => $payload['type_label'] ?? $this->alertTypeLabel($payload['type'] ?? 'unknown'),
+                    'users' => $payload['user']['full_name'] ?? ($payload['driver'] ?? null),
+                    'time' => $payload['created_at'] ?? null,
+                    'processed' => (bool) ($payload['is_processed'] ?? false),
+                    'status' => 'Ouvert',
                     'status_color' => 'bg-red-500',
-                    'raw_type'     => $a->alert_type,
+                    'raw_type' => $a->alert_type,
+                    'message' => $payload['message'] ?? null,
+                    'description' => $payload['description'] ?? null,
+                    'location' => $payload['location'] ?? null,
+                    'lat' => $payload['lat'] ?? null,
+                    'lng' => $payload['lng'] ?? null,
+                    'speed' => $payload['speed'] ?? null,
+                    'driver' => $payload['driver'] ?? 'Non assigné',
+                    'user' => $payload['user'] ?? null,
+                    'immatriculation' => $payload['immatriculation'] ?? '—',
+                    'created_at' => $payload['created_at'] ?? '—',
+                    'is_processed' => (bool) ($payload['is_processed'] ?? false),
+                    'is_read' => (bool) ($payload['is_read'] ?? false),
+                    'scope' => $payload['scope'] ?? [
+                        'day' => now()->toDateString(),
+                        'processed' => false,
+                    ],
                 ];
             })
             ->values()
@@ -590,8 +599,6 @@ class DashboardCacheService
             return;
         }
 
-        $type = $this->normalizeAlertType($alert->alert_type);
-
         if ($includeTop) {
             $this->rebuildAlerts(10);
         } else {
@@ -599,22 +606,17 @@ class DashboardCacheService
             $this->rebuildStats();
         }
 
-        $payload = [
-            'id'              => (int) $alert->id,
-            'type'            => $type,
-            'vehicle_id'      => (int) ($alert->voiture_id ?? 0),
-            'vehicle'         => $alert->voiture?->immatriculation ?? 'N/A',
-            'immatriculation' => $alert->voiture?->immatriculation ?? 'N/A',
-            'alerted_at'      => optional($alert->alerted_at ?? $alert->created_at)?->toISOString(),
-            'scope'           => [
-                'day'       => now()->toDateString(),
-                'processed' => false,
-            ],
-        ];
+        $payload = $this->buildRealtimeAlertPayload($alert);
 
+        // Push to queue BEFORE bumping version so the stream loop always finds the
+        // event waiting when it wakes up and sees the new version.
         $this->pushEventToQueue(self::KEY_ALERT_NEW_QUEUE, $payload);
         $this->publish('alert_new', $payload);
-        $this->bumpVersionDebounced(1);
+
+        // Use a hard bump (not debounced) so that even if rebuildAlerts/rebuildStats
+        // already fired a debounced bump within the same second, the stream loop is
+        // guaranteed to detect a version change and consume the alert.new queue entry.
+        $this->bumpVersion();
     }
 
     public function publishResolvedAlertEvent(Alert $alert, bool $includeTop = true): void
@@ -623,8 +625,6 @@ class DashboardCacheService
             return;
         }
 
-        $type = $this->normalizeAlertType($alert->alert_type);
-
         if ($includeTop) {
             $this->rebuildAlerts(10);
         } else {
@@ -632,21 +632,88 @@ class DashboardCacheService
             $this->rebuildStats();
         }
 
-        $payload = [
-            'id'              => (int) $alert->id,
-            'type'            => $type,
-            'vehicle_id'      => (int) ($alert->voiture_id ?? 0),
-            'vehicle'         => $alert->voiture?->immatriculation ?? 'N/A',
-            'immatriculation' => $alert->voiture?->immatriculation ?? 'N/A',
-            'scope'           => [
-                'day'       => now()->toDateString(),
-                'processed' => false,
-            ],
-        ];
+        $payload = $this->buildRealtimeAlertPayload($alert);
+        $payload['is_processed'] = true;
 
         $this->pushEventToQueue(self::KEY_ALERT_PROCESSED_QUEUE, $payload);
         $this->publish('alert_processed', $payload);
-        $this->bumpVersionDebounced(1);
+
+        // Hard bump — same reason as publishNewAlertEvent.
+        $this->bumpVersion();
+    }
+
+    private function buildRealtimeAlertPayload(Alert $alert): array
+    {
+        $alert->loadMissing([
+            'voiture',
+            'voiture.utilisateur',
+        ]);
+
+        $voiture = $alert->voiture;
+        $user = $voiture?->utilisateur?->first();
+
+        $fullName = trim((string) (($user->nom ?? '') . ' ' . ($user->prenom ?? '')));
+        if ($fullName === '') {
+            $fullName = trim((string) (($user->prenom ?? '') . ' ' . ($user->nom ?? '')));
+        }
+
+        $phone = trim((string) ($user->phone ?? ''));
+        $type = $this->normalizeAlertType((string) ($alert->alert_type ?? $alert->type ?? ''));
+
+        return [
+            'id' => (int) $alert->id,
+            'type' => $type,
+            'alert_type' => $type,
+            'type_label' => $this->alertTypeLabel($type),
+
+            'vehicle_id' => (int) ($alert->voiture_id ?? 0),
+            'voiture_id' => (int) ($alert->voiture_id ?? 0),
+
+            'vehicle' => [
+                'id' => (int) ($alert->voiture_id ?? 0),
+                'label' => $voiture
+                    ? trim(($voiture->immatriculation ?? '—') . ' (' . ($voiture->marque ?? 'Véhicule') . ')')
+                    : '—',
+                'immatriculation' => $voiture?->immatriculation ?? '—',
+                'marque' => $voiture?->marque ?? null,
+                'model' => $voiture?->model ?? null,
+            ],
+
+            'immatriculation' => $voiture?->immatriculation ?? '—',
+            'message' => $alert->message,
+            'description' => $alert->message,
+            'location' => $alert->location ?? $alert->message,
+            'lat' => $alert->lat ?? null,
+            'lng' => $alert->lng ?? null,
+            'speed' => $alert->speed ?? null,
+
+            'driver' => $fullName ?: 'Non assigné',
+
+            'user' => [
+                'id' => $user?->id,
+                'nom' => $user?->nom,
+                'prenom' => $user?->prenom,
+                'full_name' => $fullName ?: 'Non assigné',
+                'phone' => $phone ?: null,
+                'call_url' => $phone ? ('tel:' . preg_replace('/\s+/', '', $phone)) : null,
+            ],
+
+            'created_at' => ($alert->alerted_at ?? $alert->created_at)
+                ? Carbon::parse($alert->alerted_at ?? $alert->created_at)->format('d/m/Y H:i:s')
+                : '—',
+
+            'alerted_at' => ($alert->alerted_at ?? $alert->created_at)
+                ? Carbon::parse($alert->alerted_at ?? $alert->created_at)->toISOString()
+                : null,
+
+            'is_processed' => (bool) ($alert->processed ?? false),
+            'is_read' => (bool) ($alert->read ?? false),
+
+            'scope' => [
+                'day' => now()->toDateString(),
+                'processed' => false,
+            ],
+        ];
     }
 
     public function refreshOfflineStatusesFromRedis(): array
@@ -680,8 +747,10 @@ class DashboardCacheService
 
         if ($changed > 0) {
             Redis::pipeline(function ($pipe) use ($hashPayload) {
-                $pipe->hMSet(self::KEY_FLEET_H, $hashPayload);
-                $pipe->expire(self::KEY_FLEET_H, $this->ttlFleet);
+                if (!empty($hashPayload)) {
+                    $pipe->hmset(self::KEY_FLEET_H, $hashPayload);
+                    $pipe->expire(self::KEY_FLEET_H, $this->ttlFleet);
+                }
             });
 
             $this->markVehiclesDirty($dirtyIds);
@@ -823,27 +892,46 @@ class DashboardCacheService
         $minutes = intdiv($seconds % 3600, 60);
         $secs = $seconds % 60;
 
-        if ($days > 0) return "{$days}j {$hours}h {$minutes}min";
-        if ($hours > 0) return "{$hours}h {$minutes}min";
-        if ($minutes > 0) return "{$minutes}min" . ($secs > 0 ? " {$secs}s" : '');
+        if ($days > 0) {
+            return "{$days}j {$hours}h {$minutes}min";
+        }
+        if ($hours > 0) {
+            return "{$hours}h {$minutes}min";
+        }
+        if ($minutes > 0) {
+            return "{$minutes}min" . ($secs > 0 ? " {$secs}s" : '');
+        }
+
         return "{$secs}s";
     }
 
     private function toMs($value): ?int
     {
-        if ($value === null) return null;
+        if ($value === null) {
+            return null;
+        }
 
         if (is_numeric($value)) {
             $n = (int) $value;
-            if ($n <= 0) return null;
-            if ($n >= 1000000000000) return $n;
-            if ($n >= 1000000000) return $n * 1000;
+            if ($n <= 0) {
+                return null;
+            }
+            if ($n >= 1000000000000) {
+                return $n;
+            }
+            if ($n >= 1000000000) {
+                return $n * 1000;
+            }
         }
 
         if (is_string($value)) {
             $s = trim((string) $value);
-            if ($s === '') return null;
-            if (is_numeric($s)) return $this->toMs((int) $s);
+            if ($s === '') {
+                return null;
+            }
+            if (is_numeric($s)) {
+                return $this->toMs((int) $s);
+            }
 
             try {
                 return Carbon::parse($s)->getTimestampMs();
@@ -857,7 +945,9 @@ class DashboardCacheService
 
     private function msToDateTime(?int $ms): ?string
     {
-        if (!$ms || $ms <= 0) return null;
+        if (!$ms || $ms <= 0) {
+            return null;
+        }
 
         try {
             return Carbon::createFromTimestampMs($ms)
@@ -1017,7 +1107,9 @@ class DashboardCacheService
     private function normalizeAlertType(?string $t): string
     {
         $t = strtolower(trim((string) $t));
-        if ($t === '') return 'unknown';
+        if ($t === '') {
+            return 'unknown';
+        }
 
         return match ($t) {
             'overspeed', 'speeding', 'speed' => 'speed',
@@ -1052,14 +1144,17 @@ class DashboardCacheService
 
     private function isTodayAlert($date): bool
     {
+        // If no date is available we give the benefit of the doubt and treat the
+        // alert as today's — better to trigger a false notification than to
+        // silently swallow a real one.
         if (!$date) {
-            return false;
+            return true;
         }
 
         try {
             return Carbon::parse($date)->isToday();
         } catch (\Throwable $e) {
-            return false;
+            return true;
         }
     }
 }

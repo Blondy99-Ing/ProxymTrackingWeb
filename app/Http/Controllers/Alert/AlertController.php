@@ -76,7 +76,7 @@ class AlertController extends Controller
             'commentaire' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $alert = Alert::with(['voiture', 'processedBy'])->findOrFail($id);
+        $alert = Alert::with(['voiture.utilisateur', 'processedBy'])->findOrFail($id);
 
         $alert->processed = true;
         $alert->processed_by = Auth::id();
@@ -88,13 +88,15 @@ class AlertController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => 'Alerte marquée comme traitée',
-            'data'    => [
-                'id'                => (int) $alert->id,
-                'is_processed'      => true,
-                'processed_by'      => $alert->processed_by,
-                'commentaire'       => $alert->commentaire,
-                'processed_by_name' => optional($alert->processedBy)->name,
-            ],
+            'data'    => array_merge(
+                $this->formatAlert($alert),
+                [
+                    'is_processed'      => true,
+                    'processed_by'      => $alert->processed_by,
+                    'commentaire'       => $alert->commentaire,
+                    'processed_by_name' => optional($alert->processedBy)->name,
+                ]
+            ),
         ]);
     }
 
@@ -258,13 +260,20 @@ class AlertController extends Controller
     {
         $voiture = $a->voiture;
 
-        $driver = 'Non assigné';
+        $user = null;
+        $phone = null;
+        $fullName = 'Non assigné';
+
         if ($voiture && $voiture->utilisateur && $voiture->utilisateur->count() > 0) {
-            $u = $voiture->utilisateur->first();
-            $driver = trim(($u->nom ?? '') . ' ' . ($u->prenom ?? ''));
-            if ($driver === '') {
-                $driver = $u->phone ?? 'Non assigné';
+            $user = $voiture->utilisateur->first();
+            $fullName = trim(($user->nom ?? '') . ' ' . ($user->prenom ?? ''));
+            if ($fullName === '') {
+                $fullName = trim(($user->prenom ?? '') . ' ' . ($user->nom ?? ''));
             }
+            if ($fullName === '') {
+                $fullName = $user->phone ?? 'Non assigné';
+            }
+            $phone = $user->phone ?? null;
         }
 
         $type = $this->normalizeType($a->alert_type ?? $a->type);
@@ -287,13 +296,22 @@ class AlertController extends Controller
                     : '—',
             ],
 
-            'driver'      => $driver ?: 'Non assigné',
+            'driver'      => $fullName,
             'location'    => $a->location ?? $a->message,
             'description' => $a->message,
             'lat'         => $a->lat ?? null,
             'lng'         => $a->lng ?? null,
             'speed'       => $a->speed ?? null,
             'raw_type'    => $a->alert_type,
+
+            'user' => [
+                'id' => $user?->id,
+                'nom' => $user?->nom,
+                'prenom' => $user?->prenom,
+                'full_name' => $fullName,
+                'phone' => $phone,
+                'call_url' => $phone ? ('tel:' . preg_replace('/\s+/', '', $phone)) : null,
+            ],
         ];
     }
 
