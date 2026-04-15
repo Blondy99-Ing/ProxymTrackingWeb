@@ -48,7 +48,7 @@ class TrackingUserController extends Controller
     {
         $request->validate([
             'nom' => ['required', 'string', 'max:255'],
-            'prenom' => ['required', 'string', 'max:255'],
+            'prenom' => ['string', 'max:255'],
             'phone' => ['required', 'string', 'max:255', 'unique:users,phone'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'ville' => ['nullable', 'string', 'max:255'],

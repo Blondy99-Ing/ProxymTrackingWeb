@@ -162,4 +162,22 @@ class User extends Authenticatable
         return $this->hasMany(HistoriqueAssociationChauffeurVoiturePartner::class, 'chauffeur_id')
             ->orderByDesc('start_at');
     }
+
+
+
+
+    public function subscriptions()
+{
+    return $this->hasMany(\App\Models\Subscription::class, 'user_id');
+}
+
+public function payments()
+{
+    return $this->hasMany(\App\Models\Payment::class, 'user_id');
+}
+
+public function recordedPayments()
+{
+    return $this->hasMany(\App\Models\Payment::class, 'recorded_by');
+}
 }

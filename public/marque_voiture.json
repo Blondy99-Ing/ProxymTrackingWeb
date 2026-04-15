@@ -68,5 +68,7 @@
   { "brand": "Proton", "tier": "C" },
   { "brand": "Great Wall (legacy)", "tier": "C" },
   { "brand": "Tank", "tier": "C" },
-  { "brand": "Jetour", "tier": "C" }
+  { "brand": "Jetour", "tier": "C" },
+  { "brand": "Moto", "tier": "C" },
+  { "brand": "Autres", "tier": "C" }
 ]

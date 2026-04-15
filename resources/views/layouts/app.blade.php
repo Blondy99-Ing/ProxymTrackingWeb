@@ -1690,13 +1690,13 @@
     <div id="sr-live" aria-live="polite" aria-atomic="true" class="sr-only"></div>
 
     @php
-        $authUser = auth('web')->user();
-        $isAdmin = ($authUser?->isAdmin() ?? false);
-        $isCallCenter = ($authUser?->isCallCenter() ?? false);
-        $canManageTracking = $isAdmin;
-        $canSeeGpsSim = $isAdmin;
-        $canSeeSettings = $isAdmin;
-        $canCutEngine = $isAdmin || $isCallCenter;
+    $authUser = auth('web')->user();
+    $isAdmin = ($authUser?->isAdmin() ?? false);
+    $isCallCenter = ($authUser?->isCallCenter() ?? false);
+    $canManageTracking = $isAdmin;
+    $canSeeGpsSim = $isAdmin;
+    $canSeeSettings = $isAdmin;
+    $canCutEngine = $isAdmin || $isCallCenter;
     @endphp
 
     {{-- ════════════════════════════════════════════════════════
@@ -1765,13 +1765,25 @@
                                 Villes
                             </a>
                         </li>
+
                         @endif
+
+
                         <li role="none">
                             <a href="{{ route('dashboard') }}#trajets"
                                 class="{{ request()->routeIs('trajets.*') ? 'active' : '' }}"
                                 data-dashboard-tab="trajets">
                                 <span class="nav-icon" aria-hidden="true"><i class="fas fa-route"></i></span>
                                 Trajets
+                            </a>
+                        </li>
+
+                        <li role="none">
+                            <a href="{{ route('v1.historique_positions.index') }}" role="menuitem"
+                                class="{{ request()->routeIs('v1.historique_positions.*') ? 'active' : '' }}"
+                                aria-current="{{ request()->routeIs('v1.historique_positions.*') ? 'page' : 'false' }}">
+                                <span class="nav-icon" aria-hidden="true"><i class="fas fa-map-marker-alt"></i></span>
+                                Historique Positions
                             </a>
                         </li>
                     </ul>
@@ -1811,6 +1823,15 @@
                         class="{{ request()->routeIs('gps_sim.*') ? 'active' : '' }}">
                         <span class="nav-icon" aria-hidden="true"><i class="fas fa-sim-card"></i></span>
                         <span class="nav-label">GPS & SIM</span>
+                    </a>
+                </li>
+
+                <li>
+                    <a href="{{ route('subscriptions.v1.index') }}"
+                        class="{{ request()->routeIs('subscriptions.v1.*') ? 'active' : '' }}"
+                        aria-current="{{ request()->routeIs('subscriptions.v1.*') ? 'page' : 'false' }}">
+                        <span class="nav-icon" aria-hidden="true"><i class="fas fa-credit-card"></i></span>
+                        <span class="nav-label">Souscriptions</span>
                     </a>
                 </li>
                 @endif
@@ -1928,7 +1949,8 @@
             Alertes
         </a>
         @if($canCutEngine)
-        <a href="{{ route('engine.action.index') }}" class="{{ request()->routeIs('engine.action.*') ? 'active' : '' }}">
+        <a href="{{ route('engine.action.index') }}"
+            class="{{ request()->routeIs('engine.action.*') ? 'active' : '' }}">
             <span class="nav-icon" aria-hidden="true"><i class="fas fa-power-off"></i></span>
             Moteur
         </a>

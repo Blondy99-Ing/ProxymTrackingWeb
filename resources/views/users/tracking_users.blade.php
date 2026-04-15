@@ -140,7 +140,7 @@
                 </div>
                 <div>
                     <label for="prenom" class="block text-sm font-medium text-secondary">Prénom</label>
-                    <input type="text" id="prenom" name="prenom" class="ui-input-style mt-1" required>
+                    <input type="text" id="prenom" name="prenom" class="ui-input-style mt-1" >
                 </div>
             </div>
 
@@ -151,7 +151,7 @@
                 </div>
                 <div>
                     <label for="email" class="block text-sm font-medium text-secondary">Email</label>
-                    <input type="email" id="email" name="email" class="ui-input-style mt-1" required>
+                    <input type="email" id="email" name="email" class="ui-input-style mt-1" >
                 </div>
             </div>
 

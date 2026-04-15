@@ -19,6 +19,8 @@ use App\Http\Controllers\Gps\HistoriqueCoupureController;
 use App\Http\Controllers\GpsSimController;
 use App\Http\Controllers\Auth\VerifyLoginController;
 use App\Http\Controllers\Trajets\TrajetReplayController;
+use App\Http\Controllers\HistoriquePositions\HistoriquePositionController;
+use App\Http\Controllers\Subscriptions\V1\SubscriptionController;
 
 
 
@@ -121,6 +123,19 @@ Route::get('engine-status/batch', [ControlGpsController::class, 'engineStatusBat
  //           ->name('voitures.toggleEngine');
 
 
+
+
+
+//route pour l'historique des positions 
+ Route::prefix('v1')->name('v1.')->group(function () {
+    Route::get('/historique-positions', [HistoriquePositionController::class, 'index'])
+        ->name('historique_positions.index');
+
+    Route::get('/historique-positions/{vehicleId}/data', [HistoriquePositionController::class, 'data'])
+        ->name('historique_positions.data');
+});
+
+
     });
 
 
@@ -182,6 +197,18 @@ Route::get('/sim-gps/search', [VoitureController::class, 'searchSimGps'])
     Route::post('users', [TrackingUserController::class, 'store'])->name('tracking.users.store');
     Route::put('users/{trackingUser}', [TrackingUserController::class, 'update'])->name('tracking.users.update');
     Route::delete('users/{trackingUser}', [TrackingUserController::class, 'destroy'])->name('tracking.users.destroy');
+});
+
+
+Route::prefix('v1')->name('subscriptions.v1.')->group(function () {
+    Route::get('/subscriptions', [SubscriptionController::class, 'index'])
+        ->name('index');
+
+    Route::get('/subscriptions/eligible-vehicles', [SubscriptionController::class, 'eligibleVehicles'])
+        ->name('eligible_vehicles');
+
+    Route::post('/subscriptions/cash', [SubscriptionController::class, 'storeCash'])
+        ->name('store_cash');
 });
 
 });

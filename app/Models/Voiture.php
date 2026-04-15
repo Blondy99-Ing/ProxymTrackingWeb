@@ -184,4 +184,26 @@ class Voiture extends Model
     {
         return $this->hasMany(Commande::class, 'vehicule_id');
     }
+
+
+
+
+    public function subscriptions()
+{
+    return $this->hasMany(\App\Models\Subscription::class, 'vehicle_id');
+}
+
+public function payments()
+{
+    return $this->hasMany(\App\Models\Payment::class, 'vehicle_id');
+}
+
+public function activeSubscription()
+{
+    return $this->hasOne(\App\Models\Subscription::class, 'vehicle_id')
+        ->where('status', 'ACTIVE')
+        ->where('start_date', '<=', now())
+        ->where('end_date', '>', now())
+        ->latestOfMany('end_date');
+}
 }
