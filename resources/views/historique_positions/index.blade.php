@@ -229,6 +229,12 @@
     opacity: .95;
 }
 
+.hp-submit:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    filter: grayscale(.15);
+}
+
 .hp-reset-link {
     display: inline-flex;
     align-items: center;
@@ -247,6 +253,75 @@
 
 .hp-reset-link:hover {
     border-color: var(--color-primary);
+}
+
+.hp-selected-vehicle {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    margin: 0 .75rem .65rem;
+    padding: .75rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 14px;
+    background: rgba(37,99,235,.06);
+}
+
+.dark-mode .hp-selected-vehicle {
+    background: rgba(37,99,235,.10);
+}
+
+.hp-selected-empty {
+    background: rgba(120,120,120,.06);
+}
+
+.dark-mode .hp-selected-empty {
+    background: rgba(255,255,255,.03);
+}
+
+.hp-selected-icon {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--color-primary), #1d4ed8);
+    color: #fff;
+    font-size: .95rem;
+}
+
+.hp-selected-empty .hp-selected-icon {
+    background: linear-gradient(135deg, #6b7280, #4b5563);
+}
+
+.hp-selected-meta {
+    min-width: 0;
+}
+
+.hp-selected-label {
+    font-family: var(--font-display);
+    font-size: .58rem;
+    font-weight: 900;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--color-secondary-text, #8b949e);
+    margin-bottom: .18rem;
+}
+
+.hp-selected-title {
+    font-family: var(--font-display);
+    font-size: .84rem;
+    font-weight: 900;
+    color: var(--color-text);
+    line-height: 1.2;
+}
+
+.hp-selected-sub {
+    margin-top: .12rem;
+    font-size: .68rem;
+    color: var(--color-secondary-text, #8b949e);
+    line-height: 1.4;
 }
 
 .hp-list-head {
@@ -287,14 +362,18 @@
 
 .hp-item {
     display: block;
+    width: 100%;
+    text-align: left;
     padding: .85rem .8rem;
     cursor: pointer;
+    border-top: none;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border-subtle);
     border-left: 3px solid transparent;
     transition: .15s;
-    text-decoration: none;
     color: inherit;
     position: relative;
-    border-bottom: 1px solid var(--color-border-subtle);
+    background: transparent;
 }
 
 .hp-item:last-child {
@@ -306,8 +385,18 @@
 }
 
 .hp-item.sel {
-    background: var(--color-primary-light);
+    background: linear-gradient(135deg, var(--color-primary-light), rgba(37,99,235,.08));
     border-left-color: var(--color-primary);
+    box-shadow: inset 0 0 0 1px rgba(37,99,235,.18);
+}
+
+.hp-item.sel .hp-title {
+    color: var(--color-primary);
+}
+
+.hp-item.sel .hp-avatar {
+    background: linear-gradient(135deg, var(--color-primary), #1d4ed8);
+    color: #fff;
 }
 
 .hp-item.sel::after {
@@ -315,10 +404,11 @@
     position: absolute;
     top: 12px;
     right: 10px;
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
     border-radius: 999px;
     background: var(--color-primary);
+    box-shadow: 0 0 0 4px rgba(37,99,235,.15);
 }
 
 .hp-hrow {
@@ -658,7 +748,7 @@
 .hp-empty-state p {
     margin: 0;
     font-size: .78rem;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 </style>
 
@@ -734,10 +824,16 @@ window.initHistoryMap = function () {
                                 </div>
 
                                 <div class="hp-inline-actions">
-                                    <button type="submit" class="hp-submit" onclick="window.hpSubmitMode('exact','position')">
+                                    <button
+                                        type="submit"
+                                        class="hp-submit"
+                                        id="hpExactSubmit"
+                                        onclick="window.hpSubmitMode('exact','position')"
+                                        {{ empty($filters['vehicle_id']) ? 'disabled' : '' }}
+                                    >
                                         Voir position
                                     </button>
-                                    <a href="{{ route('v1.historique_positions.index', ['vehicle_id' => $filters['vehicle_id'] ?? null]) }}" class="hp-reset-link">
+                                    <a href="{{ route('v1.historique_positions.index') }}" class="hp-reset-link">
                                         Reset
                                     </a>
                                 </div>
@@ -755,16 +851,86 @@ window.initHistoryMap = function () {
                                 </div>
 
                                 <div class="hp-inline-actions">
-                                    <button type="submit" class="hp-submit" onclick="window.hpSubmitMode('range','trajet')">
+                                    <button
+                                        type="submit"
+                                        class="hp-submit"
+                                        id="hpRangeSubmit"
+                                        onclick="window.hpSubmitMode('range','trajet')"
+                                        {{ empty($filters['vehicle_id']) ? 'disabled' : '' }}
+                                    >
                                         Voir trajet
                                     </button>
-                                    <a href="{{ route('v1.historique_positions.index', ['vehicle_id' => $filters['vehicle_id'] ?? null]) }}" class="hp-reset-link">
+                                    <a href="{{ route('v1.historique_positions.index') }}" class="hp-reset-link">
                                         Reset
                                     </a>
                                 </div>
                             </div>
                         </div>
                     </form>
+
+                    @php
+                        $selectedVehicleItem = null;
+
+                        if (!empty($filters['vehicle_id'])) {
+                            $selectedVehicleItem = $vehicles->firstWhere('id', (int) $filters['vehicle_id']);
+                        }
+
+                        if (!$selectedVehicleItem && !empty($selectedHistory['vehicle']['id'])) {
+                            $selectedVehicleItem = (object) [
+                                'id' => $selectedHistory['vehicle']['id'],
+                                'immatriculation' => $selectedHistory['vehicle']['immatriculation'] ?? null,
+                                'marque' => $selectedHistory['vehicle']['marque'] ?? null,
+                                'utilisateur' => collect([
+                                    (object) [
+                                        'prenom' => data_get($selectedHistory, 'vehicle.owner.prenom'),
+                                        'nom' => data_get($selectedHistory, 'vehicle.owner.nom'),
+                                    ]
+                                ]),
+                            ];
+                        }
+                    @endphp
+
+                    @if($selectedVehicleItem)
+                        @php
+                            $selectedOwner = $selectedVehicleItem->utilisateur->first();
+                            $selectedOwnerName = trim(($selectedOwner->prenom ?? '') . ' ' . ($selectedOwner->nom ?? ''));
+                        @endphp
+
+                        <div class="hp-selected-vehicle" id="hpSelectedVehicleBox">
+                            <div class="hp-selected-icon">
+                                <i class="fas fa-car-side"></i>
+                            </div>
+
+                            <div class="hp-selected-meta">
+                                <div class="hp-selected-label">Véhicule sélectionné</div>
+                                <div class="hp-selected-title" id="hpSelectedVehicleTitle">
+                                    {{ $selectedVehicleItem->immatriculation ?: 'Véhicule' }}
+                                </div>
+                                <div class="hp-selected-sub" id="hpSelectedVehicleSub">
+                                    {{ $selectedVehicleItem->marque ?: 'Marque non renseignée' }}
+                                    @if($selectedOwnerName)
+                                        • {{ $selectedOwnerName }}
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                    @else
+                        <div class="hp-selected-vehicle hp-selected-empty" id="hpSelectedVehicleBox">
+                            <div class="hp-selected-icon">
+                                <i class="fas fa-circle-info"></i>
+                            </div>
+
+                            <div class="hp-selected-meta">
+                                <div class="hp-selected-label">Aucun véhicule sélectionné</div>
+                                <div class="hp-selected-title" id="hpSelectedVehicleTitle">
+                                    Aucun véhicule sélectionné
+                                </div>
+                                <div class="hp-selected-sub" id="hpSelectedVehicleSub">
+                                    Choisis d’abord un véhicule dans la liste, puis lance une recherche de position ou de trajet.
+                                </div>
+                            </div>
+                        </div>
+                    @endif
 
                     <div class="hp-list-head">
                         <strong>Véhicules</strong>
@@ -779,12 +945,15 @@ window.initHistoryMap = function () {
                                 $isSelected = (($filters['vehicle_id'] ?? null) == $vehicle->id);
                             @endphp
 
-                            <a
-                                href="{{ route('v1.historique_positions.index', array_merge(request()->query(), ['vehicle_id' => $vehicle->id])) }}"
+                            <button
+                                type="button"
                                 class="hp-item {{ $isSelected ? 'sel' : '' }}"
                                 data-id="{{ $vehicle->id }}"
                                 data-s="{{ strtolower(trim(($vehicle->immatriculation ?? '').' '.($vehicle->marque ?? '').' '.$ownerName)) }}"
-                                onclick="window.hpPickVehicle(event, '{{ $vehicle->id }}')"
+                                data-immat="{{ $vehicle->immatriculation ?: 'Véhicule' }}"
+                                data-marque="{{ $vehicle->marque ?: 'Marque non renseignée' }}"
+                                data-owner="{{ $ownerName ?: 'Propriétaire non associé' }}"
+                                onclick="window.hpPickVehicle(event, this, '{{ $vehicle->id }}')"
                             >
                                 <div class="hp-hrow">
                                     <div class="hp-avatar">
@@ -797,7 +966,7 @@ window.initHistoryMap = function () {
                                         <div class="hp-sub">{{ $ownerName ?: 'Propriétaire non associé' }}</div>
                                     </div>
                                 </div>
-                            </a>
+                            </button>
                         @empty
                             <div class="hp-empty">
                                 <div>Aucun véhicule trouvé</div>
@@ -891,13 +1060,20 @@ window.initHistoryMap = function () {
 
                 @if (!($filters['vehicle_id'] ?? null))
                     <div class="hp-empty-state">
-                        <h3>Sélectionne un véhicule</h3>
-                        <p>Choisis un véhicule dans la liste de gauche, puis applique un filtre pour afficher sa position à un instant donné ou son trajet sur une plage.</p>
+                        <h3>Choisis un véhicule pour commencer</h3>
+                        <p>
+                            1. Sélectionne un véhicule dans la liste de gauche.<br>
+                            2. Vérifie qu’il apparaît comme véhicule sélectionné.<br>
+                            3. Lance ensuite une recherche de position à un instant précis ou de trajet sur une plage.
+                        </p>
                     </div>
                 @elseif (!$selectedHistory)
                     <div class="hp-empty-state">
-                        <h3>Filtres incomplets</h3>
-                        <p>Renseigne la date et l’heure pour un instant précis, ou une plage de dates et heures pour afficher le trajet.</p>
+                        <h3>Recherche prête pour le véhicule sélectionné</h3>
+                        <p>
+                            Le véhicule est bien sélectionné. Renseigne maintenant soit la date et l’heure pour retrouver sa position,
+                            soit une plage de dates/heures pour afficher son trajet.
+                        </p>
                     </div>
                 @else
                     <div class="hp-summary">
@@ -1040,9 +1216,38 @@ window.__historyPayload = null;
 (() => {
     let hpMap = null;
 
-    window.hpPickVehicle = function(event, vehicleId) {
+    window.hpPickVehicle = function(event, el, vehicleId) {
         const hidden = document.getElementById('hpVehicleId');
         if (hidden) hidden.value = vehicleId;
+
+        document.querySelectorAll('#hpVehicleList .hp-item').forEach(item => {
+            item.classList.remove('sel');
+        });
+
+        el.classList.add('sel');
+
+        const selectedBox = document.getElementById('hpSelectedVehicleBox');
+        const selectedTitle = document.getElementById('hpSelectedVehicleTitle');
+        const selectedSub = document.getElementById('hpSelectedVehicleSub');
+        const exactBtn = document.getElementById('hpExactSubmit');
+        const rangeBtn = document.getElementById('hpRangeSubmit');
+
+        if (selectedBox) {
+            selectedBox.classList.remove('hp-selected-empty');
+        }
+
+        if (selectedTitle) {
+            selectedTitle.textContent = el.dataset.immat || 'Véhicule';
+        }
+
+        if (selectedSub) {
+            const marque = el.dataset.marque || '';
+            const owner = el.dataset.owner || '';
+            selectedSub.textContent = owner ? `${marque} • ${owner}` : marque;
+        }
+
+        if (exactBtn) exactBtn.disabled = false;
+        if (rangeBtn) rangeBtn.disabled = false;
     };
 
     window.hpSubmitMode = function(mode, view) {

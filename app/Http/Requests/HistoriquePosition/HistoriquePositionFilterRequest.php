@@ -23,7 +23,7 @@ class HistoriquePositionFilterRequest extends FormRequest
             'view'        => ['nullable', 'in:position,trajet'],
 
             'target_at'   => ['nullable', 'date'],
-            'target_time' => ['nullable', 'date_format:H:i', 'date_format:H:i:s'],
+            'target_time' => ['nullable', 'date_format:H:i:s'],
 
             'start_date'  => ['nullable', 'date'],
             'end_date'    => ['nullable', 'date'],
@@ -36,16 +36,22 @@ class HistoriquePositionFilterRequest extends FormRequest
     {
         $mode = $this->input('mode') ?: 'exact';
         $view = $this->input('view');
+        $targetTime = $this->input('target_time');
 
         if (!$view) {
             $view = $mode === 'range' ? 'trajet' : 'position';
         }
 
+        if (is_string($targetTime) && preg_match('/^\d{2}:\d{2}$/', $targetTime)) {
+            $targetTime .= ':00';
+        }
+
         $this->merge([
-            'search'   => is_string($this->search) ? trim($this->search) : $this->search,
-            'mode'     => $mode,
-            'view'     => $view,
-            'per_page' => $this->per_page ?: 20,
+            'search'      => is_string($this->search) ? trim($this->search) : $this->search,
+            'mode'        => $mode,
+            'view'        => $view,
+            'target_time' => $targetTime,
+            'per_page'    => $this->per_page ?: 20,
         ]);
     }
 
