@@ -100,142 +100,141 @@ class AlertController extends Controller
         ]);
     }
 
-    private function applyFilters($query, Request $request, string $tz): void
-    {
-        if ($request->filled('vehicle_id')) {
-            $query->where('voiture_id', (int) $request->vehicle_id);
-        }
+   private function applyFilters($query, Request $request, string $tz): void
+{
+    if ($request->filled('vehicle_id')) {
+        $query->where('voiture_id', (int) $request->vehicle_id);
+    }
 
-        if ($request->filled('q')) {
-            $term = '%' . trim((string) $request->q) . '%';
+    if ($request->filled('q')) {
+        $term = '%' . trim((string) $request->q) . '%';
 
-            $query->where(function ($q) use ($term) {
-                $q->where('message', 'like', $term)
-                  ->orWhere('alert_type', 'like', $term)
-                  ->orWhereHas('voiture', function ($vq) use ($term) {
-                      $vq->where('immatriculation', 'like', $term)
-                         ->orWhere('marque', 'like', $term)
-                         ->orWhere('model', 'like', $term);
-                  })
-                  ->orWhereHas('voiture.utilisateur', function ($uq) use ($term) {
-                      $uq->where('nom', 'like', $term)
-                         ->orWhere('prenom', 'like', $term)
-                         ->orWhere('phone', 'like', $term);
-                  });
-            });
-        }
+        $query->where(function ($q) use ($term) {
+            $q->where('message', 'like', $term)
+              ->orWhere('alert_type', 'like', $term)
+              ->orWhereHas('voiture', function ($vq) use ($term) {
+                  $vq->where('immatriculation', 'like', $term)
+                     ->orWhere('marque', 'like', $term)
+                     ->orWhere('model', 'like', $term);
+              })
+              ->orWhereHas('voiture.utilisateur', function ($uq) use ($term) {
+                  $uq->where('nom', 'like', $term)
+                     ->orWhere('prenom', 'like', $term)
+                     ->orWhere('phone', 'like', $term);
+              });
+        });
+    }
 
-        if ($request->filled('alert_type') && $request->alert_type !== 'all') {
-            $requestedType = $this->normalizeType($request->alert_type);
+    if ($request->filled('alert_type') && $request->alert_type !== 'all') {
+        $requestedType = $this->normalizeType($request->alert_type);
 
-            match ($requestedType) {
-                'speed' => $query->whereIn('alert_type', ['speed', 'overspeed', 'speeding']),
+        match ($requestedType) {
+            'speed' => $query->whereIn('alert_type', ['speed', 'overspeed', 'speeding']),
 
-                'geofence' => $query->whereIn('alert_type', [
-                    'geofence', 'geo_fence', 'geofence_enter', 'geofence_exit', 'geofence_breach'
-                ]),
+            'geofence' => $query->whereIn('alert_type', [
+                'geofence', 'geo_fence', 'geofence_enter', 'geofence_exit', 'geofence_breach'
+            ]),
 
-                'safe_zone' => $query->whereIn('alert_type', [
-                    'safe_zone', 'safezone', 'safe-zone'
-                ]),
+            'safe_zone' => $query->whereIn('alert_type', [
+                'safe_zone', 'safezone', 'safe-zone'
+            ]),
 
-                'low_battery' => $query->whereIn('alert_type', [
-                    'low_battery', 'battery_low', 'lowbattery'
-                ]),
+            'low_battery' => $query->whereIn('alert_type', [
+                'low_battery', 'battery_low', 'lowbattery'
+            ]),
 
-                'time_zone' => $query->whereIn('alert_type', [
-                    'time_zone', 'timezone', 'time-zone'
-                ]),
+            'time_zone' => $query->whereIn('alert_type', [
+                'time_zone', 'timezone', 'time-zone'
+            ]),
 
-                'offline' => $query->whereIn('alert_type', [
-                    'offline', 'unauthorized'
-                ]),
+            'offline' => $query->whereIn('alert_type', [
+                'offline', 'unauthorized'
+            ]),
 
-                default => $query->where('alert_type', $requestedType),
-            };
-        }
+            default => $query->where('alert_type', $requestedType),
+        };
+    }
 
-        $quick = $request->get('quick') ?: $request->get('date_quick', 'today');
-        $now = now($tz);
+    $quick = $request->query('quick', $request->query('date_quick', 'today'));
+    $now = now($tz);
 
-        if ($quick && $quick !== 'range') {
-            match ($quick) {
-                'today' => $query->where(function ($q) use ($now) {
-                    $q->whereDate('alerted_at', $now->toDateString())
-                      ->orWhere(function ($qq) use ($now) {
-                          $qq->whereNull('alerted_at')
-                             ->whereDate('created_at', $now->toDateString());
-                      });
-                }),
+    $from = null;
+    $to = null;
 
-                'yesterday' => $query->where(function ($q) use ($now) {
-                    $d = $now->copy()->subDay()->toDateString();
-                    $q->whereDate('alerted_at', $d)
-                      ->orWhere(function ($qq) use ($d) {
-                          $qq->whereNull('alerted_at')
-                             ->whereDate('created_at', $d);
-                      });
-                }),
+    switch ($quick) {
+        case 'today':
+            $from = $now->copy()->startOfDay();
+            $to   = $now->copy()->endOfDay();
+            break;
 
-                'this_week' => $query->where(function ($q) use ($now) {
-                    $from = $now->copy()->startOfWeek();
-                    $to   = $now->copy()->endOfWeek();
-                    $q->whereBetween('alerted_at', [$from, $to])
-                      ->orWhere(function ($qq) use ($from, $to) {
-                          $qq->whereNull('alerted_at')
-                             ->whereBetween('created_at', [$from, $to]);
-                      });
-                }),
+        case 'yesterday':
+            $from = $now->copy()->subDay()->startOfDay();
+            $to   = $now->copy()->subDay()->endOfDay();
+            break;
 
-                'this_month' => $query->where(function ($q) use ($now) {
-                    $from = $now->copy()->startOfMonth();
-                    $to   = $now->copy()->endOfMonth();
-                    $q->whereBetween('alerted_at', [$from, $to])
-                      ->orWhere(function ($qq) use ($from, $to) {
-                          $qq->whereNull('alerted_at')
-                             ->whereBetween('created_at', [$from, $to]);
-                      });
-                }),
+        case 'this_week':
+            $from = $now->copy()->startOfWeek();
+            $to   = $now->copy()->endOfWeek();
+            break;
 
-                default => null,
-            };
-        } else {
-            if ($request->filled('date_from')) {
-                $from = Carbon::parse($request->date_from, $tz)->startOfDay();
-                $to   = Carbon::parse($request->date_to ?: $request->date_from, $tz)->endOfDay();
+        case 'this_month':
+            $from = $now->copy()->startOfMonth();
+            $to   = $now->copy()->endOfMonth();
+            break;
 
-                $query->where(function ($q) use ($from, $to) {
-                    $q->whereBetween('alerted_at', [$from, $to])
-                      ->orWhere(function ($qq) use ($from, $to) {
-                          $qq->whereNull('alerted_at')
-                             ->whereBetween('created_at', [$from, $to]);
-                      });
+        case 'this_year':
+            $from = $now->copy()->startOfYear();
+            $to   = $now->copy()->endOfYear();
+            break;
+
+        case 'range':
+            if ($request->filled('date_from') || $request->filled('date_to')) {
+                $fromDate = $request->input('date_from') ?: $request->input('date_to');
+                $toDate   = $request->input('date_to') ?: $request->input('date_from');
+
+                $from = Carbon::parse($fromDate, $tz)->startOfDay();
+                $to   = Carbon::parse($toDate, $tz)->endOfDay();
+            }
+            break;
+
+        default:
+            $from = $now->copy()->startOfDay();
+            $to   = $now->copy()->endOfDay();
+            break;
+    }
+
+    if ($from && $to) {
+        $query->where(function ($q) use ($from, $to) {
+            $q->whereBetween('alerted_at', [$from, $to])
+              ->orWhere(function ($qq) use ($from, $to) {
+                  $qq->whereNull('alerted_at')
+                     ->whereBetween('created_at', [$from, $to]);
+              });
+        });
+    }
+
+    if ($request->filled('hour_from') || $request->filled('hour_to')) {
+        $hourFrom = $request->input('hour_from');
+        $hourTo   = $request->input('hour_to');
+
+        $columnExpr = "COALESCE(alerted_at, created_at)";
+
+        if ($hourFrom && $hourTo) {
+            if ($hourFrom <= $hourTo) {
+                $query->whereRaw("TIME($columnExpr) >= ? AND TIME($columnExpr) <= ?", [$hourFrom, $hourTo]);
+            } else {
+                $query->where(function ($q) use ($columnExpr, $hourFrom, $hourTo) {
+                    $q->whereRaw("TIME($columnExpr) >= ?", [$hourFrom])
+                      ->orWhereRaw("TIME($columnExpr) <= ?", [$hourTo]);
                 });
             }
-
-            if ($request->filled('hour_from') || $request->filled('hour_to')) {
-                $hourFrom = $request->input('hour_from');
-                $hourTo   = $request->input('hour_to');
-
-                $columnExpr = "COALESCE(alerted_at, created_at)";
-
-                if ($hourFrom && $hourTo) {
-                    if ($hourFrom <= $hourTo) {
-                        $query->whereRaw("TIME($columnExpr) >= ? AND TIME($columnExpr) <= ?", [$hourFrom, $hourTo]);
-                    } else {
-                        $query->where(function ($q) use ($columnExpr, $hourFrom, $hourTo) {
-                            $q->whereRaw("TIME($columnExpr) >= ?", [$hourFrom])
-                              ->orWhereRaw("TIME($columnExpr) <= ?", [$hourTo]);
-                        });
-                    }
-                } elseif ($hourFrom) {
-                    $query->whereRaw("TIME($columnExpr) >= ?", [$hourFrom]);
-                } elseif ($hourTo) {
-                    $query->whereRaw("TIME($columnExpr) <= ?", [$hourTo]);
-                }
-            }
+        } elseif ($hourFrom) {
+            $query->whereRaw("TIME($columnExpr) >= ?", [$hourFrom]);
+        } elseif ($hourTo) {
+            $query->whereRaw("TIME($columnExpr) <= ?", [$hourTo]);
         }
     }
+}
 
     private function computeStats($query): array
     {

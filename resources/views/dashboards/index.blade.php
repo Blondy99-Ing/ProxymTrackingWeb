@@ -1272,15 +1272,19 @@ $alertTypesMeta = [
         loadTrips();
     };
 
-    window.setAlertsQuick = (el, q) => {
-        document.querySelectorAll('#aQuick .qc').forEach(x => x.classList.remove('active'));
-        el?.classList.add('active');
-        document.getElementById('aDateBox')?.classList.remove('show');
-        const r = rangeForQuick(q);
-        setDateRangeInputs('aFrom', 'aTo', r.from, r.to);
-        alertsQuick = (q === 'this_year') ? 'range' : q;
-        loadAlerts();
-    };
+window.setAlertsQuick = (el, q) => {
+    document.querySelectorAll('#aQuick .qc').forEach(x => x.classList.remove('active'));
+    el?.classList.add('active');
+
+    document.getElementById('aDateBox')?.classList.remove('show');
+
+    const r = rangeForQuick(q);
+    setDateRangeInputs('aFrom', 'aTo', r.from, r.to);
+
+    alertsQuick = q;
+
+    loadAlerts();
+};
 
     window.toggleTripsCustom = () => {
         const box = document.getElementById('tDateBox');
@@ -1603,6 +1607,13 @@ $alertTypesMeta = [
         }
     }
 
+    function canRealtimeReplaceAlerts() {
+    return alertsQuick === 'today'
+        && !selectedVehicleId
+        && alertType === 'all'
+        && !document.getElementById('aDateBox')?.classList.contains('show');
+}
+
     function startSSE() {
         clearTimeout(sseReconnectTimer);
         try {
@@ -1619,7 +1630,9 @@ $alertTypesMeta = [
                 if (p.ts) { const el = document.getElementById('lastUp'); if (el) el.textContent = 'Maj: ' + p.ts; }
                 updateStatsFromPayload(p.stats);
                 if (Array.isArray(p.fleet)) handleFleetUpdate(p.fleet);
-                if (Array.isArray(p.alerts)) replaceAlertsFromSnapshot(p.alerts);
+            if (Array.isArray(p.alerts) && canRealtimeReplaceAlerts()) {
+                replaceAlertsFromSnapshot(p.alerts);
+            }            
             });
 
             // fleet.reset
@@ -1674,7 +1687,9 @@ $alertTypesMeta = [
             sse.addEventListener('alerts.updated', (e) => {
                 sseState('connected');
                 let p; try { p = JSON.parse(e.data); } catch { return; }
-                if (Array.isArray(p.alerts)) replaceAlertsFromSnapshot(p.alerts);
+            if (Array.isArray(p.alerts) && canRealtimeReplaceAlerts()) {
+                replaceAlertsFromSnapshot(p.alerts);
+            }
             });
 
             // stats.updated
