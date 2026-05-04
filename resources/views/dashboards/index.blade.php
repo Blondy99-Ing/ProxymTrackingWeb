@@ -1405,6 +1405,22 @@ $alertTypesMeta = [
                             <div style="margin-top:.6rem">Aucun trajet chargé</div>
                         </div>
                     </div>
+
+                    <div id="tripPager"
+                        style="display:none;align-items:center;justify-content:space-between;gap:.6rem;padding:.65rem .75rem;border-top:1px solid rgba(148,163,184,.18)">
+                        <button type="button" id="tripPrevBtn" class="fbtn2" onclick="window.changeTripsPage(-1)">
+                            <i class="fas fa-chevron-left"></i> Précédent
+                        </button>
+
+                        <div id="tripPageInfo"
+                            style="font-size:.78rem;font-weight:800;color:var(--color-secondary-text,#8b949e)">
+                            Page 1 / 1
+                        </div>
+
+                        <button type="button" id="tripNextBtn" class="fbtn2" onclick="window.changeTripsPage(1)">
+                            Suivant <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
                 </div>
 
                 {{-- ALERTES --}}
@@ -1937,6 +1953,11 @@ $alertTypesMeta = [
     let alertsTotal = 0;
     const ALERTS_PER_PAGE = 50;
 
+    let tripsPage = 1;
+    let tripsLastPage = 1;
+    let tripsTotal = 0;
+    const TRIPS_PER_PAGE = 50;
+
     /* ─────────────────────────────────────────────
        AUDIO
     ───────────────────────────────────────────── */
@@ -2329,7 +2350,7 @@ $alertTypesMeta = [
         hydrateSeenAlerts(alerts);
         renderAlertList();
         const b = document.getElementById('bAlerts');
-        if (b) b.textContent = alerts.length;
+        if (b) b.textContent = alertsTotal > 0 ? alertsTotal : alerts.length;
     }
 
     function normalizeRealtimeAlert(payload) {
@@ -2396,8 +2417,16 @@ $alertTypesMeta = [
         if (seenAlertIds.has(key)) return;
         seenAlertIds.add(key);
 
-        upsertAlertInMemory(normalized);
-        renderAlertList();
+        if (canRealtimeReplaceAlerts()) {
+            upsertAlertInMemory(normalized);
+            alertsTotal = Math.max(alertsTotal + 1, alerts.length);
+            renderAlertPager();
+            renderAlertList();
+
+            const b = document.getElementById('bAlerts');
+            if (b) b.textContent = alertsTotal;
+        }
+
         playAlertSoundForType(normalized.type);
         showAlertBrief(normalized);
         showRealtimeAlertModal(normalized);
@@ -2547,6 +2576,7 @@ $alertTypesMeta = [
         const r = rangeForQuick(q);
         setDateRangeInputs('tFrom', 'tTo', r.from, r.to);
         tripsQuick = (q === 'this_year') ? 'range' : q;
+        tripsPage = 1;
         loadTrips();
     };
 
@@ -2572,6 +2602,7 @@ window.setAlertsQuick = (el, q) => {
         box.classList.toggle('show');
         if (box.classList.contains('show')) {
             tripsQuick = 'range';
+            tripsPage = 1;
             loadTrips();
         }
     };
@@ -2671,6 +2702,8 @@ window.toggleAlertsCustom = () => {
                 updateFollowSelectedPill();
                 focusVehicle(selectedVehicleId, true);
                 openVehicleModal(selectedVehicleId);
+                alertsPage = 1;
+                tripsPage = 1;
                 if (document.getElementById('pane-alertes')?.classList.contains('active'))
                     loadAlerts();
                 if (document.getElementById('pane-trajets')?.classList.contains('active'))
@@ -3005,7 +3038,8 @@ window.toggleAlertsCustom = () => {
     }
 
     function canRealtimeReplaceAlerts() {
-        return alertsQuick === 'today' &&
+        return alertsPage === 1 &&
+            alertsQuick === 'today' &&
             !selectedVehicleId &&
             alertType === 'all' &&
             !document.getElementById('aDateBox')?.classList.contains('show');
@@ -3260,12 +3294,17 @@ window.toggleAlertsCustom = () => {
         const box = document.getElementById('tripList');
         if (box) box.innerHTML =
             `<div class="empty"><i class="fas fa-circle-notch fa-spin"></i><div style="margin-top:.6rem">Chargement…</div></div>`;
+
         const from = document.getElementById('tFrom')?.value || '';
         const to = document.getElementById('tTo')?.value || '';
         const url = new URL(R.trajetsList);
+
         url.searchParams.set('format', 'json');
-        url.searchParams.set('per_page', '50');
+        url.searchParams.set('per_page', String(TRIPS_PER_PAGE));
+        url.searchParams.set('page', String(tripsPage));
+
         if (selectedVehicleId) url.searchParams.set('vehicle_id', String(selectedVehicleId));
+
         if (tripsQuick && tripsQuick !== 'range') {
             url.searchParams.set('quick', tripsQuick);
         } else {
@@ -3273,6 +3312,7 @@ window.toggleAlertsCustom = () => {
             if (to) url.searchParams.set('end_date', to);
             url.searchParams.set('quick', 'range');
         }
+
         fetch(url.toString(), {
                 headers: {
                     'Accept': 'application/json',
@@ -3285,13 +3325,61 @@ window.toggleAlertsCustom = () => {
             })
             .then(json => {
                 trips = json.data || [];
+
+                tripsPage = Number(json.meta?.current_page || 1);
+                tripsLastPage = Number(json.meta?.last_page || 1);
+                tripsTotal = Number(json.meta?.total || 0);
+
+                renderTripPager();
                 renderTripList();
+
                 if (!currentTrip) setTopTripsKpis(computeTripAgg(filterTripsForUi(trips)));
             })
             .catch(() => {
                 if (box) box.innerHTML =
                     `<div class="empty"><i class="fas fa-exclamation-triangle"></i><div style="margin-top:.6rem">Erreur endpoint trajets</div></div>`;
             });
+    };
+
+    function renderTripPager() {
+        const pager = document.getElementById('tripPager');
+        const info = document.getElementById('tripPageInfo');
+        const prev = document.getElementById('tripPrevBtn');
+        const next = document.getElementById('tripNextBtn');
+
+        if (!pager || !info || !prev || !next) return;
+
+        if (tripsTotal <= TRIPS_PER_PAGE) {
+            pager.style.display = 'none';
+            return;
+        }
+
+        pager.style.display = 'flex';
+        info.textContent = `Page ${tripsPage} / ${tripsLastPage} — ${tripsTotal} trajets`;
+
+        prev.disabled = tripsPage <= 1;
+        next.disabled = tripsPage >= tripsLastPage;
+
+        prev.style.opacity = prev.disabled ? '.45' : '1';
+        next.style.opacity = next.disabled ? '.45' : '1';
+
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+    }
+
+    window.changeTripsPage = (direction) => {
+        const nextPage = tripsPage + direction;
+
+        if (nextPage < 1 || nextPage > tripsLastPage) return;
+
+        tripsPage = nextPage;
+        currentTrip = null;
+        loadTrips();
+
+        document.getElementById('tripList')?.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
     };
 
     function renderTripList() {
@@ -3792,14 +3880,7 @@ window.changeAlertsPage = (direction) => {
                     label: 'Type',
                     value: meta.label
                 },
-                {
-                    label: 'Véhicule',
-                    value: imm
-                },
-                {
-                    label: 'Chauffeur',
-                    value: userName
-                },
+                
                 {
                     label: 'Heure',
                     value: a.created_at || '—'
@@ -3946,6 +4027,7 @@ window.changeAlertsPage = (direction) => {
         ['tFrom', 'tTo'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', () => {
                 tripsQuick = 'range';
+                tripsPage = 1;
                 document.getElementById('tDateBox')?.classList.add('show');
                 loadTripsDeb();
             });
@@ -3953,6 +4035,7 @@ window.changeAlertsPage = (direction) => {
         ['aFrom', 'aTo', 'aHFrom', 'aHTo'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', () => {
                 alertsQuick = 'range';
+                alertsPage = 1;
                 document.getElementById('aDateBox')?.classList.add('show');
                 loadAlertsDeb();
             });
